@@ -2,6 +2,7 @@ import { Navigate, createBrowserRouter } from "react-router-dom";
 import { Suspense, lazy, type ReactNode } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { getAuthToken } from "@/lib/api";
+import { RouteError } from "@/components/layout/RouteError";
 
 const LoginPage = lazy(() => import("@/features/auth/LoginPage").then((m) => ({ default: m.LoginPage })));
 const DashboardPage = lazy(() =>
@@ -32,6 +33,7 @@ function LazyWrap({ children }: { children: ReactNode }) {
 export const router = createBrowserRouter([
   {
     path: "/login",
+    errorElement: <RouteError />,
     element: (
       <LazyWrap>
         <LoginPage />
@@ -40,6 +42,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/",
+    errorElement: <RouteError />,
     element: (
       <Protected>
         <AppShell />

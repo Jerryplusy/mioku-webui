@@ -1,29 +1,19 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
-
-type ThemeMode = "light" | "dark" | "auto";
-
-function resolveAutoTheme(): "light" | "dark" {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
+import { applyTheme, cycleThemeMode, readThemeMode, watchSystemTheme, type ThemeMode } from "@/lib/theme";
 
 export function ThemeToggle() {
-  const [mode, setMode] = useState<ThemeMode>((localStorage.getItem("mioku_theme_mode") as ThemeMode) || "auto");
-  const nextMode = mode === "auto" ? "light" : mode === "light" ? "dark" : "auto";
+  const [mode, setMode] = useState<ThemeMode>(readThemeMode());
+  const nextMode = cycleThemeMode(mode);
 
   useEffect(() => {
-    const apply = (target: ThemeMode) => {
-      const theme = target === "auto" ? resolveAutoTheme() : target;
-      document.documentElement.classList.toggle("dark", theme === "dark");
-      localStorage.setItem("mioku_theme_mode", target);
-    };
-
-    apply(mode);
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const listener = () => mode === "auto" && apply("auto");
-    media.addEventListener("change", listener);
-    return () => media.removeEventListener("change", listener);
+    applyTheme(mode);
+    return watchSystemTheme(() => {
+      if (mode === "auto") {
+        applyTheme("auto");
+      }
+    });
   }, [mode]);
 
   const icon = mode === "light" ? <Sun className="h-4 w-4" /> : mode === "dark" ? <Moon className="h-4 w-4" /> : <Monitor className="h-4 w-4" />;

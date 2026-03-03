@@ -16,19 +16,27 @@ export function PluginConfigPage() {
   const { setLeftContent } = useTopbar();
 
   useEffect(() => {
-    apiFetch<any>("/api/plugins").then((res) => {
-      setPlugins(res.data || []);
-      if (res.data?.[0]?.name) {
-        setSelected(res.data[0].name);
-      }
-    });
+    apiFetch<any>("/api/plugins")
+      .then((res) => {
+        setPlugins(res.data || []);
+        if (res.data?.[0]?.name) {
+          setSelected(res.data[0].name);
+        }
+      })
+      .catch((e) => {
+        setMsg(e instanceof Error ? e.message : "加载插件列表失败");
+      });
   }, []);
 
   useEffect(() => {
     if (!selected) return;
-    apiFetch<any>(`/api/plugin-config/${selected}`).then((res) => {
-      setConfigs(res.data || {});
-    });
+    apiFetch<any>(`/api/plugin-config/${selected}`)
+      .then((res) => {
+        setConfigs(res.data || {});
+      })
+      .catch((e) => {
+        setMsg(e instanceof Error ? e.message : "加载插件配置失败");
+      });
   }, [selected]);
 
   useEffect(() => {
