@@ -17,6 +17,8 @@ const navItems = [
 ];
 
 export function AppShell() {
+  const islandHideDelay = 260;
+  const islandHideDistance = 56;
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [topbarMode, setTopbarMode] = useState<"initial" | "island" | "hidden">(
@@ -27,6 +29,8 @@ export function AppShell() {
   const lastScrollYRef = useRef(0);
   const topbarModeRef = useRef<"initial" | "island" | "hidden">("initial");
   const islandEnterYRef = useRef(0);
+  const islandEnteredAtRef = useRef(0);
+  const islandHideStartYRef = useRef<number | null>(null);
   const maxWidthRef = useRef<HTMLDivElement | null>(null);
   const leftSlotRef = useRef<HTMLDivElement | null>(null);
   const rightSlotRef = useRef<HTMLDivElement | null>(null);
@@ -54,18 +58,34 @@ export function AppShell() {
       const mode = topbarModeRef.current;
 
       if (currentY < 16) {
+        islandHideStartYRef.current = null;
         if (mode !== "initial") setTopbarMode("initial");
       } else if (delta > 3) {
         if (mode === "initial") {
           islandEnterYRef.current = currentY;
+          islandEnteredAtRef.current = Date.now();
+          islandHideStartYRef.current = null;
           setTopbarMode("island");
-        } else if (mode === "island" && currentY - islandEnterYRef.current > 56) {
-          setTopbarMode("hidden");
+        } else if (mode === "island") {
+          const elapsed = Date.now() - islandEnteredAtRef.current;
+
+          if (elapsed >= islandHideDelay) {
+            if (islandHideStartYRef.current === null) {
+              islandHideStartYRef.current = currentY;
+            } else if (currentY - islandHideStartYRef.current > islandHideDistance) {
+              islandHideStartYRef.current = null;
+              setTopbarMode("hidden");
+            }
+          }
         }
       } else if (delta < -3) {
         if (mode === "hidden") {
           islandEnterYRef.current = currentY;
+          islandEnteredAtRef.current = Date.now();
+          islandHideStartYRef.current = null;
           setTopbarMode("island");
+        } else if (mode === "island") {
+          islandHideStartYRef.current = null;
         }
       }
 
