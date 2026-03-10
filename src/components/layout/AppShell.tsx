@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 
 const navItems = [
   { to: "/", label: "状态总览" },
+  { to: "/config", label: "Mioku配置" },
   { to: "/plugins", label: "插件管理" },
   { to: "/services", label: "服务管理" },
   { to: "/ai", label: "AI配置" },
@@ -26,6 +27,7 @@ export function AppShell() {
   );
   const [compactWidth, setCompactWidth] = useState<number>(760);
   const [leftContent, setLeftContent] = useState<ReactNode>(null);
+  const [rightContent, setRightContent] = useState<ReactNode>(null);
   const lastScrollYRef = useRef(0);
   const topbarModeRef = useRef<"initial" | "island" | "hidden">("initial");
   const islandEnterYRef = useRef(0);
@@ -35,8 +37,8 @@ export function AppShell() {
   const leftSlotRef = useRef<HTMLDivElement | null>(null);
   const rightSlotRef = useRef<HTMLDivElement | null>(null);
   const topbarValue = useMemo(
-    () => ({ leftContent, setLeftContent }),
-    [leftContent],
+    () => ({ leftContent, setLeftContent, rightContent, setRightContent }),
+    [leftContent, rightContent],
   );
 
   const calcCompactWidth = useCallback(() => {
@@ -223,7 +225,8 @@ export function AppShell() {
                     </div>
                   </div>
                 </div>
-                <div ref={rightSlotRef} className="shrink-0">
+                <div ref={rightSlotRef} className="flex shrink-0 items-center gap-2">
+                  {rightContent}
                   <ThemeToggle />
                 </div>
               </header>

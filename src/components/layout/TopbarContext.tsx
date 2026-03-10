@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 export interface TopbarContextValue {
   leftContent: ReactNode;
   setLeftContent: (content: ReactNode) => void;
+  rightContent: ReactNode;
+  setRightContent: (content: ReactNode) => void;
 }
 
 export const TopbarContext = createContext<TopbarContextValue | null>(null);
