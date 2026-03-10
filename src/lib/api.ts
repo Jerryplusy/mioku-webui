@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 const AUTH_KEY = "mioku_webui_auth";
 
 export class ApiError extends Error {
@@ -77,6 +79,7 @@ export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
       clearAuth();
       redirectToLogin();
     }
+    toast.error(message);
     throw new ApiError(message, res.status, body);
   }
 

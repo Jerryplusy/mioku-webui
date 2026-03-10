@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
 import { useTopbar } from "@/components/layout/TopbarContext";
 import { Plus, Trash2, Save } from "lucide-react";
+import { toast } from "sonner";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 type MiokuConfig = {
   owners: number[];
@@ -54,23 +56,29 @@ export function MiokuConfigPage() {
   const [availablePlugins, setAvailablePlugins] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<ConfigTab>("owners");
   const { setLeftContent, setRightContent } = useTopbar();
+
+  const initialConfigRef = useRef<string>("");
+  const [hasChanges, setHasChanges] = useState(false);
+
+  useUnsavedChanges(hasChanges);
 
   const load = async () => {
     setLoading(true);
     try {
       const [miokuRes, webuiRes, pluginsRes] = await Promise.all([
         apiFetch<{ data: MiokuConfig }>("/api/config/mioku"),
-        apiFetch<{ data: WebUISettings }>("/api/config/webui"),
-        apiFetch<{ data: string[] }>("/api/plugins/available"),
+        apiFetch<{ data: WebUISettings }>("/api/settings"),
+        apiFetch<{ data: string[] }>("/api/config/plugins/available"),
       ]);
-      setMiokuConfig(miokuRes.data || { owners: [], admins: [], napcat: [], plugins: [] });
+      const config = miokuRes.data || { owners: [], admins: [], napcat: [], plugins: [] };
+      setMiokuConfig(config);
       setWebuiSettings(webuiRes.data || { port: 3339, host: "0.0.0.0", packageManager: "bun", autoOpen: false });
       setAvailablePlugins(pluginsRes.data || []);
-    } catch (e) {
-      setMsg({ type: "error", text: e instanceof Error ? e.message : "加载配置失败" });
+      initialConfigRef.current = JSON.stringify({ mioku: config, webui: webuiRes.data });
+    } catch {
+      toast.error("加载配置失败");
     } finally {
       setLoading(false);
     }
@@ -81,16 +89,21 @@ export function MiokuConfigPage() {
   }, []);
 
   useEffect(() => {
+    const current = JSON.stringify({ mioku: miokuConfig, webui: webuiSettings });
+    setHasChanges(current !== initialConfigRef.current);
+  }, [miokuConfig, webuiSettings]);
+
+  useEffect(() => {
     setLeftContent(
       <div className="topbar-scroll flex items-center gap-1 overflow-x-auto">
         {(Object.keys(tabLabels) as ConfigTab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
               activeTab === tab
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary/50 hover:bg-secondary"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-secondary/50 text-secondary-foreground hover:bg-secondary"
             }`}
           >
             {tabLabels[tab]}
@@ -103,13 +116,13 @@ export function MiokuConfigPage() {
 
   useEffect(() => {
     setRightContent(
-      <Button onClick={saveAll} disabled={saving} size="sm">
-        <Save className="mr-1 h-4 w-4" />
-        保存配置
+      <Button onClick={saveAll} disabled={saving || !hasChanges} size="sm">
+        <Save className="h-4 w-4 sm:mr-1" />
+        <span className="hidden sm:inline">保存配置</span>
       </Button>,
     );
     return () => setRightContent(null);
-  }, [saving, miokuConfig, webuiSettings, setRightContent]);
+  }, [saving, hasChanges, setRightContent]);
 
   const saveAll = async () => {
     setSaving(true);
@@ -119,15 +132,16 @@ export function MiokuConfigPage() {
           method: "PUT",
           body: JSON.stringify(miokuConfig),
         }),
-        apiFetch("/api/config/webui", {
+        apiFetch("/api/settings", {
           method: "PUT",
           body: JSON.stringify(webuiSettings),
         }),
       ]);
-      setMsg({ type: "success", text: "配置保存成功" });
-      setTimeout(() => setMsg(null), 3000);
-    } catch (e) {
-      setMsg({ type: "error", text: e instanceof Error ? e.message : "保存失败" });
+      toast.success("配置保存成功");
+      initialConfigRef.current = JSON.stringify({ mioku: miokuConfig, webui: webuiSettings });
+      setHasChanges(false);
+    } catch {
+      toast.error("保存失败");
     } finally {
       setSaving(false);
     }
@@ -209,18 +223,6 @@ export function MiokuConfigPage() {
 
   return (
     <div className="space-y-4 animate-soft-pop">
-      {msg ? (
-        <p
-          className={`rounded-md border p-2 text-sm ${
-            msg.type === "success"
-              ? "border-green-500/30 bg-green-500/10 text-green-500"
-              : "border-red-500/30 bg-red-500/10 text-red-500"
-          }`}
-        >
-          {msg.text}
-        </p>
-      ) : null}
-
       {activeTab === "owners" && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -240,7 +242,7 @@ export function MiokuConfigPage() {
                     value={owner || ""}
                     onChange={(e) => updateOwner(index, parseInt(e.target.value) || 0)}
                     placeholder="QQ 号"
-                    className="flex-1"
+                    className="flex-1 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <Button
                     variant="ghost"
@@ -276,7 +278,7 @@ export function MiokuConfigPage() {
                     value={admin || ""}
                     onChange={(e) => updateAdmin(index, parseInt(e.target.value) || 0)}
                     placeholder="QQ 号"
-                    className="flex-1"
+                    className="flex-1 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <Button
                     variant="ghost"
@@ -330,7 +332,7 @@ export function MiokuConfigPage() {
                       placeholder="实例名称"
                     />
                     <select
-                      className="h-10 rounded-md border bg-card px-3 text-sm"
+                      className="form-select"
                       value={napcat.protocol}
                       onChange={(e) => updateNapCat(index, "protocol", e.target.value)}
                     >
@@ -347,6 +349,7 @@ export function MiokuConfigPage() {
                       value={napcat.port}
                       onChange={(e) => updateNapCat(index, "port", parseInt(e.target.value) || 0)}
                       placeholder="端口"
+                      className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                     <Input
                       type="password"
@@ -377,10 +380,10 @@ export function MiokuConfigPage() {
                   <button
                     key={plugin}
                     onClick={() => togglePlugin(plugin)}
-                    className={`rounded-full border px-3 py-1 text-sm transition-all ${
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-all ${
                       miokuConfig.plugins.includes(plugin)
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary/50 hover:bg-secondary"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-secondary/50 text-secondary-foreground hover:bg-secondary"
                     }`}
                   >
                     {plugin}
@@ -410,6 +413,7 @@ export function MiokuConfigPage() {
                       port: parseInt(e.target.value) || 3339,
                     }))
                   }
+                  className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
               </div>
               <div className="space-y-1">
@@ -424,7 +428,7 @@ export function MiokuConfigPage() {
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">包管理器</label>
                 <select
-                  className="h-10 w-full rounded-md border bg-card px-3 text-sm"
+                  className="form-select w-full"
                   value={webuiSettings.packageManager}
                   onChange={(e) =>
                     setWebuiSettings((prev) => ({
@@ -443,6 +447,7 @@ export function MiokuConfigPage() {
                 <input
                   type="checkbox"
                   id="autoOpen"
+                  className="form-checkbox"
                   checked={webuiSettings.autoOpen}
                   onChange={(e) =>
                     setWebuiSettings((prev) => ({
@@ -450,7 +455,6 @@ export function MiokuConfigPage() {
                       autoOpen: e.target.checked,
                     }))
                   }
-                  className="h-4 w-4"
                 />
                 <label htmlFor="autoOpen" className="text-sm">
                   自动打开浏览器
