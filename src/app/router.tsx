@@ -22,6 +22,11 @@ const PackagePage = lazy(() =>
     default: m.PackagePage,
   })),
 );
+const PluginManagePage = lazy(() =>
+  import("@/features/management/PluginManagePage").then((m) => ({
+    default: m.PluginManagePage,
+  })),
+);
 const AIConfigPage = lazy(() =>
   import("@/features/ai/AIConfigPage").then((m) => ({
     default: m.AIConfigPage,
@@ -102,7 +107,7 @@ export const router = createBrowserRouter([
         path: "plugins",
         element: (
           <LazyWrap>
-            <PackagePage target="plugin" />
+            <PluginManagePage />
           </LazyWrap>
         ),
       },

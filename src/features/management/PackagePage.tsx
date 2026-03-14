@@ -15,7 +15,8 @@ export function PackagePage({ target }: { target: TargetType }) {
 
   const load = async () => {
     try {
-      const endpoint = target === "plugin" ? "/api/plugins" : "/api/services";
+      const endpoint =
+        target === "plugin" ? "/api/manage/plugins" : "/api/manage/services";
       const res = await apiFetch<any>(endpoint);
       setItems(res.data || []);
     } catch (e) {

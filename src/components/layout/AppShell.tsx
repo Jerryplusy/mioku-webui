@@ -4,7 +4,7 @@ import { Menu, X } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { TopbarContext } from "./TopbarContext";
-import type { ReactNode } from "react";
+import type { ReactNode, WheelEvent } from "react";
 
 const navItems = [
   { to: "/", label: "状态总览" },
@@ -39,6 +39,23 @@ export function AppShell() {
   const topbarValue = useMemo(
     () => ({ leftContent, setLeftContent, rightContent, setRightContent }),
     [leftContent, rightContent],
+  );
+
+  const handleTopbarHorizontalWheel = useCallback(
+    (event: WheelEvent<HTMLDivElement>) => {
+      const el = event.currentTarget;
+      if (el.scrollWidth <= el.clientWidth) return;
+
+      const delta =
+        Math.abs(event.deltaY) > Math.abs(event.deltaX)
+          ? event.deltaY
+          : event.deltaX;
+      if (!delta) return;
+
+      el.scrollLeft += delta;
+      event.preventDefault();
+    },
+    [],
   );
 
   const calcCompactWidth = useCallback(() => {
@@ -227,7 +244,10 @@ export function AppShell() {
                   >
                     <Menu className="h-4 w-4" />
                   </Button>
-                  <div className="topbar-scroll flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                  <div
+                    className="topbar-chip-scroll flex min-w-0 flex-1 items-center gap-2 overflow-x-auto touch-pan-x"
+                    onWheel={handleTopbarHorizontalWheel}
+                  >
                     <div key={location.pathname} className="animate-soft-pop">
                       {leftContent}
                     </div>

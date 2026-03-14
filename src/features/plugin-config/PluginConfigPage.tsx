@@ -16,7 +16,7 @@ export function PluginConfigPage() {
   const { setLeftContent } = useTopbar();
 
   useEffect(() => {
-    apiFetch<any>("/api/plugins")
+    apiFetch<any>("/api/manage/plugins")
       .then((res) => {
         setPlugins(res.data || []);
         if (res.data?.[0]?.name) {
