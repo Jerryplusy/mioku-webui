@@ -36,6 +36,8 @@ interface PluginOverviewItem {
   hasUpdates: boolean;
   behind: number;
   updateError?: string;
+  updateChecking?: boolean;
+  updateCheckedAt?: number;
 }
 
 interface PluginDetail {
@@ -84,7 +86,15 @@ function toBrowserRepoUrl(raw: string): string {
   return value.replace(/^git\+/, "").replace(/\.git$/, "");
 }
 
-function getUpdateBadge(state: UpdateState, behind: number) {
+function getUpdateBadge(state: UpdateState, behind: number, checking?: boolean) {
+  if (checking) {
+    return (
+      <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300">
+        <LoaderCircle className="mr-1 h-3.5 w-3.5 animate-spin" />
+        检查中
+      </Badge>
+    );
+  }
   if (state === "has-updates") {
     return (
       <Badge className="bg-orange-500/15 text-orange-700 dark:text-orange-300">
@@ -170,10 +180,19 @@ export function PluginManagePage() {
   const [removingName, setRemovingName] = useState("");
   const [savingRepo, setSavingRepo] = useState(false);
   const [navAnimSeed, setNavAnimSeed] = useState(0);
+  const [badgeAnimNames, setBadgeAnimNames] = useState<Set<string>>(
+    () => new Set(),
+  );
   const lastPluginNavSignatureRef = useRef("");
+  const prevPluginUpdateSnapshotRef = useRef<Map<string, string>>(new Map());
+  const silentOverviewLoadingRef = useRef(false);
 
-  const loadOverview = async () => {
-    setLoadingOverview(true);
+  const loadOverview = async (options?: { silent?: boolean }) => {
+    if (options?.silent && silentOverviewLoadingRef.current) return;
+    if (options?.silent) {
+      silentOverviewLoadingRef.current = true;
+    }
+    if (!options?.silent) setLoadingOverview(true);
     try {
       const res = await apiFetch<{ ok: true; data: PluginOverviewItem[] }>(
         "/api/manage/plugins/overview",
@@ -194,7 +213,10 @@ export function PluginManagePage() {
         toast.error("加载插件列表失败");
       }
     } finally {
-      setLoadingOverview(false);
+      if (options?.silent) {
+        silentOverviewLoadingRef.current = false;
+      }
+      if (!options?.silent) setLoadingOverview(false);
     }
   };
 
@@ -219,6 +241,42 @@ export function PluginManagePage() {
   useEffect(() => {
     loadOverview().then();
   }, []);
+
+  useEffect(() => {
+    const needPoll = plugins.some(
+      (item) =>
+        item.hasGit &&
+        (item.updateChecking ||
+          (item.updateState === "unknown" && !item.updateCheckedAt)),
+    );
+    if (!needPoll) return;
+    const timer = setTimeout(() => {
+      loadOverview({ silent: true }).then();
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [plugins]);
+
+  useEffect(() => {
+    const nextSnapshot = new Map<string, string>();
+    const prevSnapshot = prevPluginUpdateSnapshotRef.current;
+    const changed = new Set<string>();
+
+    for (const item of plugins) {
+      const nextSig = `${item.updateState}|${item.behind}|${item.updateChecking ? 1 : 0}`;
+      nextSnapshot.set(item.name, nextSig);
+      const prevSig = prevSnapshot.get(item.name);
+      if (prevSig && prevSig !== nextSig) {
+        changed.add(item.name);
+      }
+    }
+
+    prevPluginUpdateSnapshotRef.current = nextSnapshot;
+    if (changed.size === 0) return;
+
+    setBadgeAnimNames(changed);
+    const timer = setTimeout(() => setBadgeAnimNames(new Set()), 260);
+    return () => clearTimeout(timer);
+  }, [plugins]);
 
   const pluginNavSignature = plugins.map((plugin) => plugin.name).join("|");
 
@@ -509,7 +567,21 @@ export function PluginManagePage() {
                       ) : (
                         <Badge>{plugin.version}</Badge>
                       )}
-                      {getUpdateBadge(plugin.updateState, plugin.behind)}
+                      {(() => {
+                        const badge = getUpdateBadge(
+                          plugin.updateState,
+                          plugin.behind,
+                          plugin.updateChecking,
+                        );
+                        if (!badge) return null;
+                        return (
+                          <span
+                            className={badgeAnimNames.has(plugin.name) ? "animate-scale-in" : undefined}
+                          >
+                            {badge}
+                          </span>
+                        );
+                      })()}
                     </div>
                     {plugin.description ? (
                       <p className="mt-1 truncate text-xs text-muted-foreground">

@@ -36,6 +36,8 @@ interface ServiceOverviewItem {
   hasUpdates: boolean;
   behind: number;
   updateError?: string;
+  updateChecking?: boolean;
+  updateCheckedAt?: number;
 }
 
 interface ServiceDetail {
@@ -83,7 +85,15 @@ function toBrowserRepoUrl(raw: string): string {
   return value.replace(/^git\+/, "").replace(/\.git$/, "");
 }
 
-function getUpdateBadge(state: UpdateState, behind: number) {
+function getUpdateBadge(state: UpdateState, behind: number, checking?: boolean) {
+  if (checking) {
+    return (
+      <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300">
+        <LoaderCircle className="mr-1 h-3.5 w-3.5 animate-spin" />
+        检查中
+      </Badge>
+    );
+  }
   if (state === "has-updates") {
     return (
       <Badge className="bg-orange-500/15 text-orange-700 dark:text-orange-300">
@@ -127,10 +137,19 @@ export function ServiceManagePage() {
   const [removingName, setRemovingName] = useState("");
   const [savingRepo, setSavingRepo] = useState(false);
   const [navAnimSeed, setNavAnimSeed] = useState(0);
+  const [badgeAnimNames, setBadgeAnimNames] = useState<Set<string>>(
+    () => new Set(),
+  );
   const lastServiceNavSignatureRef = useRef("");
+  const prevServiceUpdateSnapshotRef = useRef<Map<string, string>>(new Map());
+  const silentOverviewLoadingRef = useRef(false);
 
-  const loadOverview = async () => {
-    setLoadingOverview(true);
+  const loadOverview = async (options?: { silent?: boolean }) => {
+    if (options?.silent && silentOverviewLoadingRef.current) return;
+    if (options?.silent) {
+      silentOverviewLoadingRef.current = true;
+    }
+    if (!options?.silent) setLoadingOverview(true);
     try {
       const res = await apiFetch<{ ok: true; data: ServiceOverviewItem[] }>(
         "/api/manage/services/overview",
@@ -151,7 +170,10 @@ export function ServiceManagePage() {
         toast.error("加载服务列表失败");
       }
     } finally {
-      setLoadingOverview(false);
+      if (options?.silent) {
+        silentOverviewLoadingRef.current = false;
+      }
+      if (!options?.silent) setLoadingOverview(false);
     }
   };
 
@@ -177,6 +199,42 @@ export function ServiceManagePage() {
     loadOverview().then();
   }, []);
 
+  useEffect(() => {
+    const needPoll = services.some(
+      (item) =>
+        item.hasGit &&
+        (item.updateChecking ||
+          (item.updateState === "unknown" && !item.updateCheckedAt)),
+    );
+    if (!needPoll) return;
+    const timer = setTimeout(() => {
+      loadOverview({ silent: true }).then();
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [services]);
+
+  useEffect(() => {
+    const nextSnapshot = new Map<string, string>();
+    const prevSnapshot = prevServiceUpdateSnapshotRef.current;
+    const changed = new Set<string>();
+
+    for (const item of services) {
+      const nextSig = `${item.updateState}|${item.behind}|${item.updateChecking ? 1 : 0}`;
+      nextSnapshot.set(item.name, nextSig);
+      const prevSig = prevSnapshot.get(item.name);
+      if (prevSig && prevSig !== nextSig) {
+        changed.add(item.name);
+      }
+    }
+
+    prevServiceUpdateSnapshotRef.current = nextSnapshot;
+    if (changed.size === 0) return;
+
+    setBadgeAnimNames(changed);
+    const timer = setTimeout(() => setBadgeAnimNames(new Set()), 260);
+    return () => clearTimeout(timer);
+  }, [services]);
+
   const serviceNavSignature = services.map((service) => service.name).join("|");
 
   useEffect(() => {
@@ -196,7 +254,10 @@ export function ServiceManagePage() {
 
     const chips = (
       <div className="flex items-center gap-2 whitespace-nowrap">
-        <span className="topbar-nav-item-enter" style={{ animationDelay: "0ms" }}>
+        <span
+          className="topbar-nav-item-enter"
+          style={{ animationDelay: "0ms" }}
+        >
           <button
             type="button"
             onClick={() => setMode("overview")}
@@ -205,7 +266,10 @@ export function ServiceManagePage() {
             总览
           </button>
         </span>
-        <span className="topbar-nav-item-enter" style={{ animationDelay: "45ms" }}>
+        <span
+          className="topbar-nav-item-enter"
+          style={{ animationDelay: "45ms" }}
+        >
           <button
             type="button"
             onClick={() => setMode("install")}
@@ -221,19 +285,19 @@ export function ServiceManagePage() {
               className="topbar-nav-item-enter"
               style={{ animationDelay: `${(index + 2) * 45}ms` }}
             >
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedName(service.name);
-                setMode("detail");
-                loadDetail(service.name).then();
-              }}
-              className={chipClass(
-                mode === "detail" && selectedName === service.name,
-              )}
-            >
-              {service.name}
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedName(service.name);
+                  setMode("detail");
+                  loadDetail(service.name).then();
+                }}
+                className={chipClass(
+                  mode === "detail" && selectedName === service.name,
+                )}
+              >
+                {service.name}
+              </button>
             </span>
           );
         })}
@@ -466,7 +530,21 @@ export function ServiceManagePage() {
                       ) : (
                         <Badge>{service.version}</Badge>
                       )}
-                      {getUpdateBadge(service.updateState, service.behind)}
+                      {(() => {
+                        const badge = getUpdateBadge(
+                          service.updateState,
+                          service.behind,
+                          service.updateChecking,
+                        );
+                        if (!badge) return null;
+                        return (
+                          <span
+                            className={badgeAnimNames.has(service.name) ? "animate-scale-in" : undefined}
+                          >
+                            {badge}
+                          </span>
+                        );
+                      })()}
                     </div>
                     {service.description ? (
                       <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -507,7 +585,7 @@ export function ServiceManagePage() {
                       }
                     >
                       {service.isSystemService ? (
-                        "system"
+                        "卸载"
                       ) : removingName === service.name ? (
                         <LoaderCircle className="h-4 w-4 animate-spin" />
                       ) : (
@@ -590,7 +668,9 @@ export function ServiceManagePage() {
                     )}
                     {getUpdateBadge(detail.updateState, detail.behind)}
                   </div>
-                  <CardDescription>{detail.description || "无描述"}</CardDescription>
+                  <CardDescription>
+                    {detail.description || "无描述"}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex flex-wrap gap-2">
@@ -621,7 +701,7 @@ export function ServiceManagePage() {
                       }
                     >
                       {detail.isSystemService ? (
-                        "system"
+                        "卸载"
                       ) : removingName === detail.name ? (
                         <LoaderCircle className="h-4 w-4 animate-spin" />
                       ) : (
@@ -635,10 +715,15 @@ export function ServiceManagePage() {
                     <div className="flex flex-col gap-2 md:flex-row">
                       <Input
                         value={repoEditInput}
-                        onChange={(event) => setRepoEditInput(event.target.value)}
+                        onChange={(event) =>
+                          setRepoEditInput(event.target.value)
+                        }
                         placeholder="输入新的 Git 仓库地址"
                       />
-                      <Button onClick={changeRepo} disabled={savingRepo || !detail.hasGit}>
+                      <Button
+                        onClick={changeRepo}
+                        disabled={savingRepo || !detail.hasGit}
+                      >
                         {savingRepo ? (
                           <LoaderCircle className="h-4 w-4 animate-spin" />
                         ) : (
@@ -656,7 +741,9 @@ export function ServiceManagePage() {
                           <Badge key={service}>{service}</Badge>
                         ))
                       ) : (
-                        <p className="text-xs text-muted-foreground">无额外服务依赖</p>
+                        <p className="text-xs text-muted-foreground">
+                          无额外服务依赖
+                        </p>
                       )}
                     </div>
                     {detail.missingServices.length > 0 ? (
@@ -692,7 +779,8 @@ export function ServiceManagePage() {
           {!loadingDetail && !detail && selectedName ? (
             <Card>
               <CardContent className="p-5 text-sm text-muted-foreground">
-                未找到服务 <span className="font-mono">{selectedName}</span> 的详情。
+                未找到服务 <span className="font-mono">{selectedName}</span>{" "}
+                的详情。
               </CardContent>
             </Card>
           ) : null}
