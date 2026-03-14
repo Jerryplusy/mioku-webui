@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ExternalLink,
@@ -126,6 +126,8 @@ export function ServiceManagePage() {
   const [updatingName, setUpdatingName] = useState("");
   const [removingName, setRemovingName] = useState("");
   const [savingRepo, setSavingRepo] = useState(false);
+  const [navAnimSeed, setNavAnimSeed] = useState(0);
+  const lastServiceNavSignatureRef = useRef("");
 
   const loadOverview = async () => {
     setLoadingOverview(true);
@@ -175,49 +177,66 @@ export function ServiceManagePage() {
     loadOverview().then();
   }, []);
 
+  const serviceNavSignature = services.map((service) => service.name).join("|");
+
   useEffect(() => {
+    if (!serviceNavSignature) return;
+    if (serviceNavSignature === lastServiceNavSignatureRef.current) return;
+    lastServiceNavSignatureRef.current = serviceNavSignature;
+    setNavAnimSeed((value) => value + 1);
+  }, [serviceNavSignature, services]);
+
+  useEffect(() => {
+    const chipClass = (active: boolean) =>
+      `topbar-chip rounded-full border px-3 py-1.5 text-xs ${
+        active
+          ? "border-transparent bg-primary text-primary-foreground shadow-md"
+          : "border-transparent bg-secondary text-secondary-foreground"
+      }`;
+
     const chips = (
       <div className="flex items-center gap-2 whitespace-nowrap">
-        <button
-          type="button"
-          onClick={() => setMode("overview")}
-          className={`topbar-chip rounded-md px-2.5 py-1.5 text-xs transition-all duration-300 ${
-            mode === "overview"
-              ? "scale-105 bg-primary text-primary-foreground shadow-md"
-              : "bg-secondary text-secondary-foreground hover:-translate-y-0.5"
-          }`}
-        >
-          总览
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("install")}
-          className={`topbar-chip rounded-md px-2.5 py-1.5 text-xs transition-all duration-300 ${
-            mode === "install"
-              ? "scale-105 bg-primary text-primary-foreground shadow-md"
-              : "bg-secondary text-secondary-foreground hover:-translate-y-0.5"
-          }`}
-        >
-          安装
-        </button>
-        {services.map((service) => (
+        <span className="topbar-nav-item-enter" style={{ animationDelay: "0ms" }}>
           <button
-            key={service.name}
             type="button"
-            onClick={() => {
-              setSelectedName(service.name);
-              setMode("detail");
-              loadDetail(service.name).then();
-            }}
-            className={`topbar-chip rounded-md px-2.5 py-1.5 text-xs transition-all duration-300 ${
-              mode === "detail" && selectedName === service.name
-                ? "scale-105 bg-primary text-primary-foreground shadow-md"
-                : "bg-secondary text-secondary-foreground hover:-translate-y-0.5"
-            }`}
+            onClick={() => setMode("overview")}
+            className={chipClass(mode === "overview")}
           >
-            {service.name}
+            总览
           </button>
-        ))}
+        </span>
+        <span className="topbar-nav-item-enter" style={{ animationDelay: "45ms" }}>
+          <button
+            type="button"
+            onClick={() => setMode("install")}
+            className={chipClass(mode === "install")}
+          >
+            安装
+          </button>
+        </span>
+        {services.map((service, index) => {
+          return (
+            <span
+              key={`${service.name}-${navAnimSeed}`}
+              className="topbar-nav-item-enter"
+              style={{ animationDelay: `${(index + 2) * 45}ms` }}
+            >
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedName(service.name);
+                setMode("detail");
+                loadDetail(service.name).then();
+              }}
+              className={chipClass(
+                mode === "detail" && selectedName === service.name,
+              )}
+            >
+              {service.name}
+            </button>
+            </span>
+          );
+        })}
       </div>
     );
     setLeftContent(chips);
@@ -226,7 +245,14 @@ export function ServiceManagePage() {
       setLeftContent(null);
       setRightContent(null);
     };
-  }, [mode, services, selectedName, setLeftContent, setRightContent]);
+  }, [
+    mode,
+    navAnimSeed,
+    services,
+    selectedName,
+    setLeftContent,
+    setRightContent,
+  ]);
 
   const updateService = async (name: string) => {
     setUpdatingName(name);

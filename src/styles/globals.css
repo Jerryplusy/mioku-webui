@@ -203,6 +203,9 @@
 
   .topbar-chip {
     transform-origin: center;
+    transition-property: background-color, border-color, color, box-shadow, transform, opacity;
+    transition-duration: 320ms;
+    transition-timing-function: cubic-bezier(0.22, 0.9, 0.3, 1);
   }
 
   .topbar-chip-scroll {
@@ -215,6 +218,33 @@
     display: none;
     width: 0;
     height: 0;
+  }
+
+  .topbar-nav-item-enter {
+    display: inline-flex;
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+    animation: topbarNavItemIn 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: transform, opacity;
+  }
+
+  @keyframes topbarNavItemIn {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 8px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .topbar-nav-item-enter {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
   }
 
   .animate-slide-in-right {

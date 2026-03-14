@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,8 @@ export function PluginConfigPage() {
   const [selected, setSelected] = useState("");
   const [configs, setConfigs] = useState<Record<string, JSONValue>>({});
   const [msg, setMsg] = useState("");
+  const [navAnimSeed, setNavAnimSeed] = useState(0);
+  const lastPluginNavSignatureRef = useRef("");
   const { setLeftContent } = useTopbar();
 
   useEffect(() => {
@@ -39,31 +41,52 @@ export function PluginConfigPage() {
       });
   }, [selected]);
 
+  const pluginNavSignature = plugins
+    .map((plugin) => String(plugin.name || ""))
+    .join("|");
+
   useEffect(() => {
+    if (!pluginNavSignature) return;
+    if (pluginNavSignature === lastPluginNavSignatureRef.current) return;
+    lastPluginNavSignatureRef.current = pluginNavSignature;
+    setNavAnimSeed((value) => value + 1);
+  }, [pluginNavSignature, plugins]);
+
+  useEffect(() => {
+    const chipClass = (active: boolean) =>
+      `topbar-chip rounded-full border px-3 py-1.5 text-xs ${
+        active
+          ? "scale-105 border-transparent bg-primary text-primary-foreground shadow-md"
+          : "border-transparent bg-secondary text-secondary-foreground hover:-translate-y-0.5 hover:opacity-95"
+      }`;
+
     setLeftContent(
       <div className="flex items-center gap-2 whitespace-nowrap">
         <span className="text-xs text-muted-foreground">插件:</span>
         <div className="flex items-center gap-2 overflow-x-auto py-1">
-          {plugins.map((plugin) => (
-            <button
-              key={plugin.name}
-              type="button"
-              onClick={() => setSelected(plugin.name)}
-              className={`topbar-chip rounded-md px-2 py-1 text-xs transition-all duration-300 ${
-                selected === plugin.name
-                  ? "scale-105 bg-primary text-primary-foreground shadow-md"
-                  : "bg-secondary text-secondary-foreground hover:-translate-y-0.5 hover:opacity-95"
-              }`}
-            >
-              {plugin.name}
-            </button>
-          ))}
+          {plugins.map((plugin, index) => {
+            return (
+              <span
+                key={`${plugin.name}-${navAnimSeed}`}
+                className="topbar-nav-item-enter"
+                style={{ animationDelay: `${(index + 1) * 45}ms` }}
+              >
+              <button
+                type="button"
+                onClick={() => setSelected(plugin.name)}
+                className={chipClass(selected === plugin.name)}
+              >
+                {plugin.name}
+              </button>
+              </span>
+            );
+          })}
         </div>
       </div>,
     );
 
     return () => setLeftContent(null);
-  }, [plugins, selected, setLeftContent]);
+  }, [navAnimSeed, plugins, selected, setLeftContent]);
 
   const updateByPath = (fileName: string, path: string[], nextValue: JSONValue) => {
     setConfigs((prev) => {

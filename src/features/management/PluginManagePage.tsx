@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ExternalLink,
@@ -169,6 +169,8 @@ export function PluginManagePage() {
   const [updatingName, setUpdatingName] = useState("");
   const [removingName, setRemovingName] = useState("");
   const [savingRepo, setSavingRepo] = useState(false);
+  const [navAnimSeed, setNavAnimSeed] = useState(0);
+  const lastPluginNavSignatureRef = useRef("");
 
   const loadOverview = async () => {
     setLoadingOverview(true);
@@ -218,49 +220,66 @@ export function PluginManagePage() {
     loadOverview().then();
   }, []);
 
+  const pluginNavSignature = plugins.map((plugin) => plugin.name).join("|");
+
   useEffect(() => {
+    if (!pluginNavSignature) return;
+    if (pluginNavSignature === lastPluginNavSignatureRef.current) return;
+    lastPluginNavSignatureRef.current = pluginNavSignature;
+    setNavAnimSeed((value) => value + 1);
+  }, [pluginNavSignature, plugins]);
+
+  useEffect(() => {
+    const chipClass = (active: boolean) =>
+      `topbar-chip rounded-full border px-3 py-1.5 text-xs ${
+        active
+          ? "border-transparent bg-primary text-primary-foreground shadow-md"
+          : "border-transparent bg-secondary text-secondary-foreground"
+      }`;
+
     const chips = (
       <div className="flex items-center gap-2 whitespace-nowrap">
-        <button
-          type="button"
-          onClick={() => setMode("overview")}
-          className={`topbar-chip rounded-md px-2.5 py-1.5 text-xs transition-all duration-300 ${
-            mode === "overview"
-              ? "scale-105 bg-primary text-primary-foreground shadow-md"
-              : "bg-secondary text-secondary-foreground hover:-translate-y-0.5"
-          }`}
-        >
-          总览
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("install")}
-          className={`topbar-chip rounded-md px-2.5 py-1.5 text-xs transition-all duration-300 ${
-            mode === "install"
-              ? "scale-105 bg-primary text-primary-foreground shadow-md"
-              : "bg-secondary text-secondary-foreground hover:-translate-y-0.5"
-          }`}
-        >
-          安装
-        </button>
-        {plugins.map((plugin) => (
+        <span className="topbar-nav-item-enter" style={{ animationDelay: "0ms" }}>
           <button
-            key={plugin.name}
             type="button"
-            onClick={() => {
-              setSelectedName(plugin.name);
-              setMode("detail");
-              loadDetail(plugin.name).then();
-            }}
-            className={`topbar-chip rounded-md px-2.5 py-1.5 text-xs transition-all duration-300 ${
-              mode === "detail" && selectedName === plugin.name
-                ? "scale-105 bg-primary text-primary-foreground shadow-md"
-                : "bg-secondary text-secondary-foreground hover:-translate-y-0.5"
-            }`}
+            onClick={() => setMode("overview")}
+            className={chipClass(mode === "overview")}
           >
-            {plugin.name}
+            总览
           </button>
-        ))}
+        </span>
+        <span className="topbar-nav-item-enter" style={{ animationDelay: "45ms" }}>
+          <button
+            type="button"
+            onClick={() => setMode("install")}
+            className={chipClass(mode === "install")}
+          >
+            安装
+          </button>
+        </span>
+        {plugins.map((plugin, index) => {
+          return (
+            <span
+              key={`${plugin.name}-${navAnimSeed}`}
+              className="topbar-nav-item-enter"
+              style={{ animationDelay: `${(index + 2) * 45}ms` }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedName(plugin.name);
+                  setMode("detail");
+                  loadDetail(plugin.name).then();
+                }}
+                className={chipClass(
+                  mode === "detail" && selectedName === plugin.name,
+                )}
+              >
+                {plugin.name}
+              </button>
+            </span>
+          );
+        })}
       </div>
     );
     setLeftContent(chips);
@@ -269,7 +288,14 @@ export function PluginManagePage() {
       setLeftContent(null);
       setRightContent(null);
     };
-  }, [mode, plugins, selectedName, setLeftContent, setRightContent]);
+  }, [
+    mode,
+    navAnimSeed,
+    plugins,
+    selectedName,
+    setLeftContent,
+    setRightContent,
+  ]);
 
   const updatePlugin = async (name: string) => {
     setUpdatingName(name);

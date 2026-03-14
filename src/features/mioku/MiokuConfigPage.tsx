@@ -112,20 +112,25 @@ export function MiokuConfigPage() {
   }, [miokuConfig, webuiSettings]);
 
   useEffect(() => {
+    const chipClass = (active: boolean) =>
+      `topbar-chip whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium ${
+        active
+          ? "border-transparent bg-primary text-primary-foreground shadow-sm"
+          : "border-transparent bg-secondary/50 text-secondary-foreground hover:bg-secondary"
+      }`;
+
     setLeftContent(
-      <div className="topbar-scroll flex items-center gap-1 overflow-x-auto">
-        {(Object.keys(tabLabels) as ConfigTab[]).map((tab) => (
-          <button
+      <div className="topbar-chip-scroll flex items-center gap-1 overflow-x-auto">
+        {(Object.keys(tabLabels) as ConfigTab[]).map((tab, index) => (
+          <span
             key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-              activeTab === tab
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "bg-secondary/50 text-secondary-foreground hover:bg-secondary"
-            }`}
+            className="topbar-nav-item-enter"
+            style={{ animationDelay: `${index * 45}ms` }}
           >
-            {tabLabels[tab]}
-          </button>
+            <button onClick={() => setActiveTab(tab)} className={chipClass(activeTab === tab)}>
+              {tabLabels[tab]}
+            </button>
+          </span>
         ))}
       </div>,
     );

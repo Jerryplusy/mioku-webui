@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
@@ -49,6 +49,8 @@ export function DashboardPage() {
   const [sayingVisible, setSayingVisible] = useState(true);
   const [displaySaying, setDisplaySaying] =
     useState("愿每一次启动都带来新的灵感。");
+  const [navAnimSeed, setNavAnimSeed] = useState(0);
+  const lastBotNavSignatureRef = useRef("");
   const { setLeftContent } = useTopbar();
 
   const appendNetworkPoint = (nextOverview: any) => {
@@ -118,52 +120,66 @@ export function DashboardPage() {
     () => bots.find((bot) => bot.botId === selectedBotId) || bots[0] || null,
     [selectedBotId],
   );
+  const botNavSignature = bots.map((bot) => String(bot.botId)).join("|");
+
+  useEffect(() => {
+    if (!botNavSignature) return;
+    if (botNavSignature === lastBotNavSignatureRef.current) return;
+    lastBotNavSignatureRef.current = botNavSignature;
+    setNavAnimSeed((value) => value + 1);
+  }, [botNavSignature, bots]);
 
   useEffect(() => {
     setLeftContent(
       <div className="flex min-w-0 items-center gap-2">
-        <div className="topbar-scroll flex items-center gap-2 overflow-x-auto">
-          {bots.map((bot) => (
-            <button
-              key={bot.botId}
-              type="button"
-              onClick={() => setSelectedBotId(bot.botId)}
-              className="group relative flex items-center gap-2 rounded-lg px-2 py-1.5 transition"
-              title={`${bot.nickname} (${bot.qq})`}
-            >
+        <div className="topbar-chip-scroll flex items-center gap-1.5 overflow-x-auto">
+          {bots.map((bot, index) => {
+            return (
               <span
-                className={`absolute inset-0 rounded-lg transition-all duration-300 ${
+                key={`${bot.botId}-${navAnimSeed}`}
+                className="topbar-nav-item-enter"
+                style={{ animationDelay: `${index * 45}ms` }}
+              >
+              <button
+                type="button"
+                onClick={() => setSelectedBotId(bot.botId)}
+                className={`topbar-chip group flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-xs ${
                   selectedBot?.botId === bot.botId
-                    ? "bg-primary/20 ring-1 ring-primary/45"
-                    : "bg-transparent group-hover:bg-secondary/45"
+                    ? "border-primary/45 bg-card text-foreground shadow-sm"
+                    : "border-border/70 bg-card/85 text-muted-foreground hover:-translate-y-0.5 hover:border-primary/35 hover:bg-card hover:text-foreground"
                 }`}
-              />
-              <span className="relative h-8 w-8 shrink-0">
-                <img
-                  src={bot.avatar}
-                  alt={bot.nickname}
-                  className="h-8 w-8 rounded-full object-cover"
-                />
-                <span
-                  className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border border-card ${
-                    bot.online ? "bg-green-500" : "bg-red-500"
-                  }`}
-                />
+                title={`${bot.nickname} (${bot.qq})`}
+              >
+                <span className="relative h-8 w-8 shrink-0">
+                  <img
+                    src={bot.avatar}
+                    alt={bot.nickname}
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
+                  <span
+                    className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border border-card ${
+                      bot.online ? "bg-green-500" : "bg-red-500"
+                    }`}
+                  />
+                </span>
+                <span className="max-w-[110px] truncate font-medium">
+                  {bot.nickname}
+                </span>
+              </button>
               </span>
-              <span className="relative max-w-[110px] truncate text-xs font-medium">
-                {bot.nickname}
-              </span>
-            </button>
-          ))}
+            );
+          })}
           {bots.length === 0 ? (
-            <span className="text-xs text-muted-foreground">暂无实例</span>
+            <span className="text-xs text-muted-foreground">
+              暂无实例
+            </span>
           ) : null}
         </div>
       </div>,
     );
 
     return () => setLeftContent(null);
-  }, [bots, selectedBot?.botId, setLeftContent]);
+  }, [bots, navAnimSeed, selectedBot?.botId, setLeftContent]);
 
   const system = overview?.system;
   const versions = overview?.versions;
