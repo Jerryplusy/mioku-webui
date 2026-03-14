@@ -87,12 +87,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          DIST_DIR=""
+          if [ -d "dist" ]; then
+            DIST_DIR="dist"
+          elif [ -d "../src/services/webui/dist" ]; then
+            DIST_DIR="../src/services/webui/dist"
+          else
+            echo "Cannot find build output directory." >&2
+            echo "Checked: ./dist and ../src/services/webui/dist" >&2
+            exit 1
+          fi
+
+          WORKSPACE_DIR="$(pwd)"
           ARCHIVE="mioku-webui-dist-v${{ steps.version.outputs.version }}.zip"
-          printf '{\"version\":\"%s\"}\n' "${{ steps.version.outputs.version }}" > dist/webui-version.json
-          cd dist
-          zip -r "../${ARCHIVE}" .
-          cd ..
-          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+          ARCHIVE_PATH="${WORKSPACE_DIR}/${ARCHIVE}"
+          printf '{\"version\":\"%s\"}\n' "${{ steps.version.outputs.version }}" > "${DIST_DIR}/webui-version.json"
+          (
+            cd "${DIST_DIR}"
+            zip -r "${ARCHIVE_PATH}" .
+          )
+          echo "archive=${ARCHIVE_PATH}" >> "$GITHUB_OUTPUT"
 
       - name: Create release
         if: steps.version.outputs.changed == 'true' && steps.tag.outputs.exists == 'false'
