@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, RefreshCw, Save } from "lucide-react";
+import { Github, Loader2, RefreshCw, Save } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTopbar } from "@/components/layout/TopbarContext";
+import { AnimatedClockChip } from "@/components/layout/AnimatedClockChip";
 import { apiFetch, clearAuth } from "@/lib/api";
 import { useAppDispatch } from "@/app/hooks";
 import { setToken } from "@/features/auth/authSlice";
@@ -39,7 +40,8 @@ interface WebUISettings {
 export function WebUIManagePage() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const { setLeftContent, setRightContent } = useTopbar();
+  const { setLeftContent, setCenterContent, setRightContent, setDenseHeader } =
+    useTopbar();
   const [checking, setChecking] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -95,35 +97,50 @@ export function WebUIManagePage() {
   }, [settings]);
 
   useEffect(() => {
-    setLeftContent(
-      <span className="topbar-nav-item-enter" style={{ animationDelay: "0ms" }}>
-        <img
-          src="/miku-logo.png"
-          alt="Mioku Logo"
-          className="h-12 w-12 shrink-0 object-contain translate-y-0.5"
-        />
-      </span>,
-    );
+    setDenseHeader(true);
+    setLeftContent(null);
+    setCenterContent(<AnimatedClockChip />);
     setRightContent(
-      <Button
-        size="sm"
-        onClick={() => void saveSettings()}
-        disabled={savingSettings || !hasSettingsChanges}
-      >
-        <Save className="h-4 w-4 sm:mr-1" />
-        <span className="hidden sm:inline">
-          {savingSettings ? "保存中..." : "保存设置"}
-        </span>
-      </Button>,
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void saveSettings()}
+          disabled={savingSettings || !hasSettingsChanges}
+          title={savingSettings ? "保存中..." : "保存设置"}
+          aria-label={savingSettings ? "保存中..." : "保存设置"}
+        >
+          <Save className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            window.open(
+              "https://github.com/Jerryplusy/mioku-webui",
+              "_blank",
+              "noopener,noreferrer",
+            )
+          }
+          title="打开 Mioku WebUI 仓库"
+          aria-label="打开 Mioku WebUI 仓库"
+        >
+          <Github className="h-4 w-4" />
+        </Button>
+      </div>,
     );
     return () => {
+      setDenseHeader(false);
       setLeftContent(null);
+      setCenterContent(null);
       setRightContent(null);
     };
   }, [
     hasSettingsChanges,
     saveSettings,
     savingSettings,
+    setCenterContent,
+    setDenseHeader,
     setLeftContent,
     setRightContent,
   ]);

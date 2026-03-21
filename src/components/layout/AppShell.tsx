@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { TopbarContext } from "./TopbarContext";
 import type { ReactNode, WheelEvent } from "react";
+import { apiFetch } from "@/lib/api";
+import { toast } from "sonner";
+import { confirm } from "@/components/ui/confirm";
 
 const navItems = [
   { to: "/", label: "状态总览" },
@@ -15,19 +18,36 @@ const navItems = [
   { to: "/plugin-config", label: "插件配置" },
   { to: "/database", label: "数据库" },
   { to: "/webui", label: "WebUI管理" },
+  { to: "/about", label: "关于" },
 ];
+
+const MIOKU_UPDATE_MODAL_LAST_SHOWN_KEY = "mioku_update_modal_last_shown_at";
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+type MiokuUpdateInfo = {
+  hasUpdates: boolean;
+  behind: number;
+  currentBranch: string;
+  targetRef: string;
+  currentVersion: string;
+  latestVersion: string;
+  error?: string;
+};
 
 export function AppShell() {
   const islandHideDelay = 260;
   const islandHideDistance = 56;
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [topbarMode, setTopbarMode] = useState<"initial" | "island" | "hidden">(
     "initial",
   );
   const [compactWidth, setCompactWidth] = useState<number>(760);
   const [leftContent, setLeftContent] = useState<ReactNode>(null);
+  const [centerContent, setCenterContent] = useState<ReactNode>(null);
   const [rightContent, setRightContent] = useState<ReactNode>(null);
+  const [denseHeader, setDenseHeader] = useState(false);
   const lastScrollYRef = useRef(0);
   const topbarModeRef = useRef<"initial" | "island" | "hidden">("initial");
   const islandEnterYRef = useRef(0);
@@ -37,8 +57,17 @@ export function AppShell() {
   const leftSlotRef = useRef<HTMLDivElement | null>(null);
   const rightSlotRef = useRef<HTMLDivElement | null>(null);
   const topbarValue = useMemo(
-    () => ({ leftContent, setLeftContent, rightContent, setRightContent }),
-    [leftContent, rightContent],
+    () => ({
+      leftContent,
+      setLeftContent,
+      centerContent,
+      setCenterContent,
+      rightContent,
+      setRightContent,
+      denseHeader,
+      setDenseHeader,
+    }),
+    [centerContent, denseHeader, leftContent, rightContent],
   );
 
   const handleTopbarHorizontalWheel = useCallback(
@@ -137,6 +166,59 @@ export function AppShell() {
     return () => window.cancelAnimationFrame(raf);
   }, [calcCompactWidth, location.pathname, leftContent]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkMiokuUpdateNotice = async () => {
+      try {
+        const res = await apiFetch<{ ok: boolean; data: MiokuUpdateInfo }>(
+          "/api/config/mioku/update/check",
+        );
+        if (cancelled) return;
+
+        const data = res.data;
+        if (!data || data.error || !data.hasUpdates) return;
+
+        const now = Date.now();
+        const raw = localStorage.getItem(MIOKU_UPDATE_MODAL_LAST_SHOWN_KEY);
+        const lastShownAt = Number(raw);
+        const shouldShowModal =
+          !Number.isFinite(lastShownAt) || now - lastShownAt >= WEEK_MS;
+
+        if (shouldShowModal) {
+          localStorage.setItem(MIOKU_UPDATE_MODAL_LAST_SHOWN_KEY, String(now));
+          const goAbout = await confirm({
+            title: "Mioku 有可用更新",
+            message: `检测到 ${data.behind} 个新提交（${data.currentBranch} -> ${data.targetRef}）`,
+            confirmText: "去查看",
+            cancelText: "稍后",
+          });
+          if (!cancelled && goAbout) {
+            navigate("/about");
+          }
+          return;
+        }
+
+        toast.warning("检测到 Mioku 有可用更新", {
+          description: `${data.currentVersion} -> ${data.latestVersion}（落后 ${data.behind} 个提交）`,
+          duration: 8000,
+          action: {
+            label: "查看",
+            onClick: () => navigate("/about"),
+          },
+        });
+      } catch {
+        // ignore update check failures for passive notice
+      }
+    };
+
+    void checkMiokuUpdateNotice();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
+
   return (
     <TopbarContext.Provider value={topbarValue}>
       <div className="min-h-screen w-full p-3 md:p-6">
@@ -220,10 +302,16 @@ export function AppShell() {
               <header
                 className={`relative flex items-center justify-between gap-3 border bg-card panel-glow animate-soft-pop transition-all duration-500 ease-[cubic-bezier(0.2,0.9,0.3,1.1)] motion-reduce:transition-none ${
                   topbarMode === "initial"
-                    ? "translate-y-0 rounded-xl p-4"
+                    ? denseHeader
+                      ? "translate-y-0 rounded-xl px-4 py-3"
+                      : "translate-y-0 rounded-xl p-4"
                     : topbarMode === "island"
-                      ? "topbar-island-fade translate-y-2 rounded-2xl px-4 py-2.5 shadow-xl shadow-black/10 backdrop-blur-md -mx-3 md:mx-0"
-                      : "topbar-island-fade -translate-y-[140%] rounded-2xl px-4 py-2.5 opacity-0 pointer-events-none"
+                      ? denseHeader
+                        ? "topbar-island-fade translate-y-2 rounded-2xl px-4 py-2.5 shadow-xl shadow-black/10 backdrop-blur-md -mx-3 md:mx-0"
+                        : "topbar-island-fade translate-y-2 rounded-2xl px-4 py-2.5 shadow-xl shadow-black/10 backdrop-blur-md -mx-3 md:mx-0"
+                      : denseHeader
+                        ? "topbar-island-fade -translate-y-[140%] rounded-2xl px-4 py-2.5 opacity-0 pointer-events-none"
+                        : "topbar-island-fade -translate-y-[140%] rounded-2xl px-4 py-2.5 opacity-0 pointer-events-none"
                 }`}
                 style={{
                   width: topbarMode === "initial" ? "100%" : `${compactWidth}px`,
@@ -250,11 +338,27 @@ export function AppShell() {
                     }`}
                     onWheel={handleTopbarHorizontalWheel}
                   >
+                    {centerContent ? (
+                      <div className="shrink-0 md:hidden">
+                        {centerContent}
+                      </div>
+                    ) : null}
                     <div key={location.pathname} className="animate-soft-pop">
                       {leftContent}
                     </div>
                   </div>
                 </div>
+                {centerContent ? (
+                  <div
+                    className={`pointer-events-none absolute inset-y-0 hidden items-center transition-[left,transform,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none md:flex ${
+                      topbarMode === "initial"
+                        ? "left-1/2 -translate-x-1/2 opacity-100"
+                        : "left-4 translate-x-0 opacity-100"
+                    }`}
+                  >
+                    <div className="max-w-full overflow-hidden">{centerContent}</div>
+                  </div>
+                ) : null}
                 <div ref={rightSlotRef} className="flex shrink-0 items-center gap-2">
                   {rightContent}
                   <ThemeToggle />

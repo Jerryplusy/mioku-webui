@@ -47,6 +47,11 @@ const AIConfigPage = lazy(() =>
     default: m.AIConfigPage,
   })),
 );
+const AboutPage = lazy(() =>
+  import("@/features/about/AboutPage").then((m) => ({
+    default: m.AboutPage,
+  })),
+);
 
 function Protected({ children }: { children: ReactNode }) {
   const token = getAuthToken();
@@ -148,6 +153,14 @@ export const router = createBrowserRouter([
         element: (
           <LazyWrap>
             <WebUIManagePage />
+          </LazyWrap>
+        ),
+      },
+      {
+        path: "about",
+        element: (
+          <LazyWrap>
+            <AboutPage />
           </LazyWrap>
         ),
       },

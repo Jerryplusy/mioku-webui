@@ -292,6 +292,16 @@
     }
   }
 
+  @keyframes topbarClockColonPulse {
+    0%,
+    100% {
+      opacity: 0.92;
+    }
+    50% {
+      opacity: 0.28;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .topbar-nav-item-enter {
       animation: none;
