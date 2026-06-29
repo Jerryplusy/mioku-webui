@@ -35,6 +35,7 @@ type BaseConfig = {
   workingModel: string;
   multimodalWorkingModel: string;
   isMultimodal: boolean;
+  enableMediaRecognition: boolean;
   maxContextTokens: number;
   temperature: number;
   historyCount: number;
@@ -161,6 +162,7 @@ const emptyBaseConfig: BaseConfig = {
   workingModel: "",
   multimodalWorkingModel: "",
   isMultimodal: true,
+  enableMediaRecognition: true,
   maxContextTokens: 128,
   temperature: 0.8,
   historyCount: 100,
@@ -890,11 +892,26 @@ export function AIConfigPage() {
               }}
             />
           </Field>
-          <Field label="多模态能力" hint="关闭后不会启用多模态能力">
+          <Field
+            label="多模态模型"
+            hint="控制聊天时是否向主模型附加图片等媒体，以及查看图片/头像时是直接附加还是用多模态工作模型描述"
+          >
             <Toggle
               checked={base.isMultimodal}
               onChange={(checked) => updateBase("isMultimodal", checked)}
               label={base.isMultimodal ? "已开启" : "已关闭"}
+            />
+          </Field>
+          <Field
+            label="媒体识别"
+            hint="开启后用多模态工作模型自动识别聊天记录中的图片/视频等媒体并保存摘要"
+          >
+            <Toggle
+              checked={base.enableMediaRecognition}
+              onChange={(checked) =>
+                updateBase("enableMediaRecognition", checked)
+              }
+              label={base.enableMediaRecognition ? "已开启" : "已关闭"}
             />
           </Field>
         </CardContent>
