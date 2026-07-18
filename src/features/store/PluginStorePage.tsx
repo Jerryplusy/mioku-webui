@@ -258,6 +258,7 @@ export function PluginStorePage() {
         if (!type) continue;
 
         const keywords = normalizeKeywords(pkg.keywords);
+        if (!keywords.includes("mioku")) continue;
         const entry =
           type === "plugin"
             ? officialPlugins[stripPrefix(npm, type)]
