@@ -138,7 +138,10 @@ export function PackagePage({ target }: { target: TargetType }) {
         <CardContent>
           <div className="space-y-3">
             {items.map((item) => (
-              <div key={item.name} className="rounded-md border p-3">
+              <div
+                key={item.name}
+                className="border-l-2 border-border px-4 py-1"
+              >
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <p className="font-semibold">{item.name}</p>
                   <Badge>{item.version}</Badge>

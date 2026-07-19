@@ -281,7 +281,7 @@ export function DashboardPage() {
               />
             </div>
 
-            <div className="rounded-xl border bg-secondary/20 p-3">
+            <div className="border-l-2 border-border px-4 py-1">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-sm font-semibold">网络上下行 (KB/s)</p>
                 <p className="text-xs text-muted-foreground">
@@ -385,7 +385,7 @@ function Gauge({
   const data = [{ name: title, value: safeValue, fill: color }];
 
   return (
-    <div className="rounded-xl border bg-secondary/20 p-2">
+    <div className="border-l-2 border-border px-3 py-1">
       <p className="text-center text-sm font-semibold">{title}</p>
       <div className="relative h-44">
         <ResponsiveContainer width="100%" height="100%">
@@ -421,7 +421,7 @@ function Gauge({
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border p-2">
+    <div className="min-w-0 border-l-2 border-border px-3 py-1">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="truncate text-sm font-medium">{value}</p>
     </div>

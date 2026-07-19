@@ -715,7 +715,7 @@ export function PluginStorePage() {
             {(pagedItems || []).map((item) => (
               <div
                 key={item.npm}
-                className="group rounded-xl border bg-card/70 p-3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg cursor-pointer"
+                className="group cursor-pointer border-l-2 border-border px-4 py-3 transition-[border-color,background-color,transform] duration-150 hover:border-primary hover:bg-secondary/30 active:scale-[0.99]"
                 onClick={() => {
                   setSelectedPackage(resolveDetailPackageName(item));
                   setMode("detail");
@@ -942,7 +942,7 @@ export function PluginStorePage() {
                 </CardHeader>
                 <CardContent>
                   {detail.readme ? (
-                    <div className="max-h-[540px] overflow-auto rounded-lg border bg-secondary/20 p-3">
+                    <div className="max-h-[540px] overflow-auto border-l-2 border-border px-4 py-1">
                       <Markdown content={detail.readme} />
                     </div>
                   ) : (
@@ -1033,7 +1033,7 @@ export function PluginStorePage() {
                 return (
                   <div
                     key={serviceName}
-                    className="rounded-lg border bg-secondary/20 p-3"
+                    className="border-l-2 border-border px-4 py-1"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -1058,7 +1058,7 @@ export function PluginStorePage() {
               })}
             </div>
 
-            <div className="mt-4 space-y-2 rounded-lg border bg-secondary/15 p-3">
+            <div className="mt-4 space-y-2 border-l-2 border-border px-4 py-1">
               <p className="text-sm font-medium">手动安装服务</p>
               <div className="flex gap-2">
                 <Input

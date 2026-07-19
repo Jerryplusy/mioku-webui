@@ -106,7 +106,7 @@ export function DatabasePage() {
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border p-3">
+    <div className="border-l-2 border-border px-3 py-1">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-xl font-semibold text-primary">{value}</p>
     </div>

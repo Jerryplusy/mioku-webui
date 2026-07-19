@@ -634,12 +634,10 @@ function CacheTab({
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-      </CardContent>
-    </Card>
+    <div className="border-l-2 border-border px-4 py-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
+    </div>
   );
 }
 

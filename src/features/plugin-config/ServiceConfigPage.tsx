@@ -279,7 +279,10 @@ export function ServiceConfigPage() {
             ) : null}
 
             {configEntries.map(([name, value]) => (
-              <div key={name} className="space-y-3 rounded-md border p-3">
+              <div
+                key={name}
+                className="space-y-3 border-l-2 border-border px-4 py-1"
+              >
                 <p className="text-sm font-semibold">{name}.json</p>
                 <Textarea
                   className="min-h-32 font-mono text-xs"

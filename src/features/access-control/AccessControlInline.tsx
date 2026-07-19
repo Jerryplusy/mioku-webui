@@ -261,7 +261,7 @@ export function AccessControlInline() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-card/60 px-4 py-3 text-sm text-muted-foreground">
+      <div className="border-l-2 border-primary px-4 py-2 text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4 text-primary" />
           访问控制:未匹配规则时一律放行,主人/管理员始终不受限制
@@ -541,7 +541,7 @@ function SingleScopeCard(props: {
   };
 
   return (
-    <div className="rounded-xl border bg-card/50 p-4 space-y-3">
+    <div className="space-y-3 border-l-2 border-border px-4 py-1">
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-2">
           {resolved?.meta?.avatarUrl ? (
@@ -676,7 +676,7 @@ function EntryRow(props: {
   const isPlugin = kind === "plugin";
   const label = isPlugin ? info?.label || plugin : id;
   return (
-    <div className="flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm">
+    <div className="flex items-center justify-between border-l-2 border-border px-3 py-2 text-sm">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className={isPlugin ? "font-medium" : "font-mono text-xs"}>

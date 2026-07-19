@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Save, Trash2 } from "lucide-react";
+import {
+  Bot,
+  BrainCircuit,
+  Images,
+  MessageSquareText,
+  Plus,
+  Save,
+  Settings2,
+  Trash2,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,12 +30,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
 import { useTopbar } from "@/components/layout/TopbarContext";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { cn } from "@/lib/utils";
 import { DatasourceMultiSelectField } from "@/features/mioku/DatasourceMultiSelectField";
 import type { DatasourceOption } from "@/features/plugin-config/datasource-utils";
+import { StickerPicker, type StickerOption } from "@/features/ai/StickerPicker";
 
 type Strength = "low" | "medium" | "high";
 
@@ -131,7 +144,7 @@ type PersonalizationConfig = {
   emoji: {
     enabled: boolean;
     characters: string[];
-    useAISelection: boolean;
+    stickers: string[];
   };
   expression: {
     enabled: boolean;
@@ -146,14 +159,26 @@ type AIResources = {
   tools: string[];
 };
 
-type ConfigTab = "model" | "behavior" | "persona" | "capability";
+type ConfigTab =
+  | "model"
+  | "reply"
+  | "context"
+  | "tools"
+  | "runtime"
+  | "stickers";
 
-const tabLabels: Record<ConfigTab, string> = {
-  model: "模型接入",
-  behavior: "回复策略",
-  persona: "角色设定",
-  capability: "能力开关",
-};
+const configTabs = [
+  { id: "model", label: "模型与接口", icon: BrainCircuit },
+  { id: "reply", label: "回复与角色", icon: MessageSquareText },
+  { id: "context", label: "上下文与主动性", icon: Bot },
+  { id: "tools", label: "工具与媒体", icon: Wrench },
+  { id: "runtime", label: "群聊与运行", icon: Settings2 },
+  { id: "stickers", label: "表情包", icon: Images },
+] satisfies Array<{
+  id: ConfigTab;
+  label: string;
+  icon: LucideIcon;
+}>;
 
 const emptyBaseConfig: BaseConfig = {
   apiUrl: "",
@@ -263,7 +288,7 @@ const emptyPersonalizationConfig: PersonalizationConfig = {
   emoji: {
     enabled: false,
     characters: [],
-    useAISelection: true,
+    stickers: [],
   },
   expression: {
     enabled: true,
@@ -374,6 +399,7 @@ function sanitizePersonalizationForSave(
     emoji: {
       ...personalization.emoji,
       characters: compactLineArray(personalization.emoji.characters),
+      stickers: compactLineArray(personalization.emoji.stickers),
     },
   };
 }
@@ -382,28 +408,6 @@ function normalizeEscapedNewlines(value: string): string {
   return String(value || "")
     .replace(/\\r\\n/g, "\n")
     .replace(/\\n/g, "\n");
-}
-
-function shouldIgnoreCardToggle(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return Boolean(
-    target.closest(
-      "input, textarea, select, button, a, label, [role='button'], [data-stop-card-toggle='true']",
-    ),
-  );
-}
-
-function getCheckboxCardClass(active: boolean, compact = false): string {
-  return cn(
-    "rounded-xl border bg-card/78 transition-all duration-200 ease-out",
-    "active:scale-[0.992] active:bg-secondary/45",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
-    compact ? "p-3" : "p-4",
-    active ? "border-primary/45 bg-secondary/35" : "border-border/85",
-  );
 }
 
 export function AIConfigPage() {
@@ -418,6 +422,7 @@ export function AIConfigPage() {
     tools: [],
   });
   const [groupOptions, setGroupOptions] = useState<DatasourceOption[]>([]);
+  const [stickerOptions, setStickerOptions] = useState<StickerOption[]>([]);
   const [activeTab, setActiveTab] = useState<ConfigTab>("model");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -439,6 +444,7 @@ export function AIConfigPage() {
         instancesRes,
         skillsRes,
         groupsRes,
+        stickersRes,
       ] = await Promise.all([
         apiFetch<{ data: BaseConfig }>("/api/ai/base"),
         apiFetch<{ data: PersonalizationConfig }>("/api/ai/personalization"),
@@ -450,6 +456,9 @@ export function AIConfigPage() {
         apiFetch<{ data: DatasourceOption[] }>(
           "/api/plugin-config/datasources/qq_groups",
         ),
+        apiFetch<{ data: StickerOption[] }>("/api/ai/stickers").catch(() => ({
+          data: [],
+        })),
       ]);
 
       const nextBase = { ...emptyBaseConfig, ...(baseRes.data || {}) };
@@ -490,6 +499,10 @@ export function AIConfigPage() {
         emoji: {
           ...emptyPersonalizationConfig.emoji,
           ...(personalizationRes.data?.emoji || {}),
+          characters: compactLineArray(
+            personalizationRes.data?.emoji?.characters,
+          ),
+          stickers: compactLineArray(personalizationRes.data?.emoji?.stickers),
         },
         expression: {
           ...emptyPersonalizationConfig.expression,
@@ -538,6 +551,7 @@ export function AIConfigPage() {
         tools: skillsRes.data?.tools || [],
       });
       setGroupOptions(groupsRes.data || []);
+      setStickerOptions(stickersRes.data || []);
 
       initialSnapshotRef.current = JSON.stringify({
         base: nextBase,
@@ -601,35 +615,15 @@ export function AIConfigPage() {
   }
 
   useEffect(() => {
-    const chipClass = (active: boolean) =>
-      `topbar-chip whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium ${
-        active
-          ? "border-transparent bg-primary text-primary-foreground shadow-sm"
-          : "border-transparent bg-secondary/50 text-secondary-foreground hover:bg-secondary"
-      }`;
-
     setLeftContent(
-      <div className="topbar-chip-scroll flex items-center gap-1 overflow-x-auto">
-        {(Object.keys(tabLabels) as ConfigTab[]).map((tab, index) => (
-          <span
-            key={tab}
-            className="topbar-nav-item-enter"
-            style={{ animationDelay: `${index * 45}ms` }}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={chipClass(activeTab === tab)}
-            >
-              {tabLabels[tab]}
-            </button>
-          </span>
-        ))}
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <BrainCircuit className="h-4 w-4 text-primary" />
+        <span>AI 设置</span>
       </div>,
     );
 
     return () => setLeftContent(null);
-  }, [activeTab, setLeftContent]);
+  }, [setLeftContent]);
 
   useEffect(() => {
     setRightContent(
@@ -708,29 +702,6 @@ export function AIConfigPage() {
       checked ? [] : [...resources.skills],
     );
   };
-
-  const summaryItems = [
-    {
-      label: "当前主模型",
-      value: base.model || "未设置",
-      hint: base.isMultimodal ? "支持图片理解" : "纯文本",
-    },
-    {
-      label: "已注册能力",
-      value: `${resources.skills.length} Skills / ${resources.tools.length} Tools`,
-      hint: "系统已加载的扩展能力",
-    },
-    {
-      label: "情绪 / 风格",
-      value: `${Object.keys(personalization.emotion.emotions).length} / ${personalization.replyStyle.multipleStyles.length}`,
-      hint: "已配置的情绪和回复风格数量",
-    },
-    {
-      label: "能力状态",
-      value: `${countEnabledCapabilities(personalization, settings)} 项已开启`,
-      hint: "记忆、话题、搜索、网页阅读等能力",
-    },
-  ];
 
   const updateEmotionExamples = (emotionName: string, examples: string[]) => {
     const normalizedName = emotionName.trim().toLowerCase();
@@ -814,11 +785,8 @@ export function AIConfigPage() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>模型接入</CardTitle>
-          <CardDescription>
-            这里决定 chat
-            插件使用哪个接口、哪个主模型，以及轻量任务和多模态任务分别走什么模型
-          </CardDescription>
+          <CardTitle>接口与模型分工</CardTitle>
+          <CardDescription>配置连接凭据，并为不同任务分配模型</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <Field label="API 地址" hint="例如 OpenAI 兼容网关或官方接口">
@@ -859,28 +827,12 @@ export function AIConfigPage() {
               placeholder="doubao-seed-2.0-mini"
             />
           </Field>
-          <Field label="上下文窗口" hint="保留多少条消息上下文">
-            <NumberInput
-              value={base.maxContextTokens}
-              onValueChange={(value) => {
-                if (value !== null) updateBase("maxContextTokens", value);
-              }}
-            />
-          </Field>
           <Field label="温度" hint="越高越发散，越低越稳定">
             <NumberInput
               step="0.1"
               value={base.temperature}
               onValueChange={(value) => {
                 if (value !== null) updateBase("temperature", value);
-              }}
-            />
-          </Field>
-          <Field label="群聊历史消息数" hint="会参与上下文拼接的历史条数">
-            <NumberInput
-              value={base.historyCount}
-              onValueChange={(value) => {
-                if (value !== null) updateBase("historyCount", value);
               }}
             />
           </Field>
@@ -892,37 +844,13 @@ export function AIConfigPage() {
               }}
             />
           </Field>
-          <Field
-            label="多模态模型"
-            hint="控制聊天时是否向主模型附加图片等媒体，以及查看图片/头像时是直接附加还是用多模态工作模型描述"
-          >
-            <Toggle
-              checked={base.isMultimodal}
-              onChange={(checked) => updateBase("isMultimodal", checked)}
-              label={base.isMultimodal ? "已开启" : "已关闭"}
-            />
-          </Field>
-          <Field
-            label="媒体识别"
-            hint="开启后用多模态工作模型自动识别聊天记录中的图片/视频等媒体并保存摘要"
-          >
-            <Toggle
-              checked={base.enableMediaRecognition}
-              onChange={(checked) =>
-                updateBase("enableMediaRecognition", checked)
-              }
-              label={base.enableMediaRecognition ? "已开启" : "已关闭"}
-            />
-          </Field>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>已加载 AI 资源</CardTitle>
-          <CardDescription>
-            这部分是当前系统运行时已注册的实例、技能和工具，方便你对照实际能力。
-          </CardDescription>
+          <CardTitle>运行时实例</CardTitle>
+          <CardDescription>当前 AI 服务已经创建的实例</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <TagGroup
@@ -930,518 +858,547 @@ export function AIConfigPage() {
             emptyLabel="当前没有额外实例"
             items={resources.instances}
           />
-          <TagGroup
-            title="Skills"
-            emptyLabel="当前没有外部 Skills"
-            items={resources.skills}
-          />
-          <TagGroup
-            title="Tools"
-            emptyLabel="当前没有注册 Tools"
-            items={resources.tools}
-          />
         </CardContent>
       </Card>
     </div>
   );
 
-  const renderBehaviorTab = () => (
+  const renderBehaviorTab = (mode: "reply" | "tools" | "runtime") => (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>回复体验</CardTitle>
-          <CardDescription>
-            控制 chat 插件怎么回、多久回、是否展示流式输出和打字停顿。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field label="机器人昵称" hint="每行一个，用于触发和识别 bot 称呼">
-            <Textarea
-              className="min-h-32"
-              value={arrayToLines(settings.nicknames)}
-              onChange={(e) =>
-                updateSettings("nicknames", linesToArray(e.target.value))
-              }
-              placeholder={"miku\n未来\n初音"}
-            />
-          </Field>
-          <Field label="最大会话数" hint="超过后旧会话会被回收">
-            <NumberInput
+      {mode === "reply" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>回复体验</CardTitle>
+            <CardDescription>
+              控制 chat 插件怎么回、多久回、是否展示流式输出和打字停顿。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            <Field label="机器人昵称" hint="每行一个，用于触发和识别 bot 称呼">
+              <Textarea
+                className="min-h-32"
+                value={arrayToLines(settings.nicknames)}
+                onChange={(e) =>
+                  updateSettings("nicknames", linesToArray(e.target.value))
+                }
+                placeholder={"miku\n未来\n初音"}
+              />
+            </Field>
+            <Field
+              label="打字延迟累计上限 (秒)"
+              hint="开启打字延迟后，单次回复按内容长度模拟停顿，但整次累计不会超过这个值"
+            >
+              <NumberInput
+                min={0}
+                value={settings.typingDelayMaxTotalMs / 1000}
+                onValueChange={(value) => {
+                  if (value !== null) {
+                    updateSettings("typingDelayMaxTotalMs", value * 1000);
+                  }
+                }}
+              />
+            </Field>
+            <Field
+              label="回复长度约束强度"
+              hint="越高越严格限制回复长度，越不容易说多"
+            >
+              <SelectField
+                value={settings.outputLengthConstraintStrength}
+                onChange={(value) =>
+                  updateSettings(
+                    "outputLengthConstraintStrength",
+                    value as Strength,
+                  )
+                }
+                options={[
+                  { label: "低", value: "low" },
+                  { label: "中", value: "medium" },
+                  { label: "高", value: "high" },
+                ]}
+              />
+            </Field>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {mode === "runtime" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>会话与冷却</CardTitle>
+            <CardDescription>控制会话保留和群聊回复节奏</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            <NumberField
+              label="获取群聊上下文"
               value={settings.maxSessions}
-              onValueChange={(value) => {
-                if (value !== null) updateSettings("maxSessions", value);
-              }}
+              onChange={(value) => updateSettings("maxSessions", value)}
             />
-          </Field>
-          <Field
-            label="回复后冷却时间 (分钟)"
-            hint="群聊内 bot 回复后的基础冷却"
-          >
-            <NumberInput
-              value={settings.cooldownAfterReplyMs / 60000}
-              onValueChange={(value) => {
-                if (value !== null) {
-                  updateSettings("cooldownAfterReplyMs", value * 60000);
-                }
-              }}
-            />
-          </Field>
-          <Field
-            label="群对话结构化历史保留时长 (分钟)"
-            hint="群里最后一次有人和 bot 对话后，这段结构化 user/assistant/tool 历史保留多久"
-          >
-            <NumberInput
-              value={settings.groupStructuredHistoryTtlMs / 60000}
-              onValueChange={(value) => {
-                if (value !== null) {
-                  updateSettings("groupStructuredHistoryTtlMs", value * 60000);
-                }
-              }}
-            />
-          </Field>
-          <Field
-            label="打字延迟累计上限 (秒)"
-            hint="开启打字延迟后，单次回复按内容长度模拟停顿，但整次累计不会超过这个值"
-          >
-            <NumberInput
-              min={0}
-              value={settings.typingDelayMaxTotalMs / 1000}
-              onValueChange={(value) => {
-                if (value !== null) {
-                  updateSettings("typingDelayMaxTotalMs", value * 1000);
-                }
-              }}
-            />
-          </Field>
-          <Field
-            label="回复长度约束强度"
-            hint="越高越严格限制回复长度，越不容易说多"
-          >
-            <SelectField
-              value={settings.outputLengthConstraintStrength}
+            <NumberField
+              label="回复后冷却（分钟）"
+              value={settings.cooldownAfterReplyMs}
+              msToMin
               onChange={(value) =>
-                updateSettings(
-                  "outputLengthConstraintStrength",
-                  value as Strength,
-                )
+                updateSettings("cooldownAfterReplyMs", value)
               }
-              options={[
-                { label: "低", value: "low" },
-                { label: "中", value: "medium" },
-                { label: "高", value: "high" },
-              ]}
             />
-          </Field>
-          <Field
-            label="工具使用约束强度"
-            hint="越高越严格限制调用工具，越不容易乱查乱用"
-          >
-            <SelectField
-              value={settings.toolCallConstraintStrength}
+            <NumberField
+              label="结构化历史保留（分钟）"
+              value={settings.groupStructuredHistoryTtlMs}
+              msToMin
               onChange={(value) =>
-                updateSettings("toolCallConstraintStrength", value as Strength)
+                updateSettings("groupStructuredHistoryTtlMs", value)
               }
-              options={[
-                { label: "低", value: "low" },
-                { label: "中", value: "medium" },
-                { label: "高", value: "high" },
-              ]}
             />
-          </Field>
-          <Field
-            label="表情包约束强度"
-            hint="越高越克制使用表情包，越低越容易用来加强情绪"
-          >
-            <SelectField
-              value={settings.emojiUsageConstraintStrength}
-              onChange={(value) =>
-                updateSettings(
-                  "emojiUsageConstraintStrength",
-                  value as Strength,
-                )
-              }
-              options={[
-                { label: "低", value: "low" },
-                { label: "中", value: "medium" },
-                { label: "高", value: "high" },
-              ]}
-            />
-          </Field>
-          <Field
-            label="语音约束强度"
-            hint="越高越克制使用语音，越低越容易在短句和强情绪时使用"
-          >
-            <SelectField
-              value={settings.audioUsageConstraintStrength}
-              onChange={(value) =>
-                updateSettings(
-                  "audioUsageConstraintStrength",
-                  value as Strength,
-                )
-              }
-              options={[
-                { label: "低", value: "low" },
-                { label: "中", value: "medium" },
-                { label: "高", value: "high" },
-              ]}
-            />
-          </Field>
-          <Field
-            label="Markdown 约束强度"
-            hint="越高越克制使用结构化长内容截图，越低越容易在需要说明时使用"
-          >
-            <SelectField
-              value={settings.markdownUsageConstraintStrength}
-              onChange={(value) =>
-                updateSettings(
-                  "markdownUsageConstraintStrength",
-                  value as Strength,
-                )
-              }
-              options={[
-                { label: "低", value: "low" },
-                { label: "中", value: "medium" },
-                { label: "高", value: "high" },
-              ]}
-            />
-          </Field>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>AI 请求限额</CardTitle>
-          <CardDescription>
-            限制 chat 插件每分钟可实际发起的总 AI 请求次数
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field
-            label="单用户 RPM"
-            hint="同一个用户每分钟最多允许的 AI 请求次数"
-          >
-            <NumberInput
-              min={0}
-              value={settings.aiRequestLimits.userRpm}
-              onValueChange={(value) => {
-                if (value === null) return;
+      {mode === "runtime" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>AI 请求限额</CardTitle>
+            <CardDescription>
+              限制 chat 插件每分钟可实际发起的总 AI 请求次数
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            <Field
+              label="单用户 RPM"
+              hint="同一个用户每分钟最多允许的 AI 请求次数"
+            >
+              <NumberInput
+                min={0}
+                value={settings.aiRequestLimits.userRpm}
+                onValueChange={(value) => {
+                  if (value === null) return;
+                  setSettings((prev) => ({
+                    ...prev,
+                    aiRequestLimits: {
+                      ...prev.aiRequestLimits,
+                      userRpm: value,
+                    },
+                  }));
+                }}
+              />
+            </Field>
+            <Field
+              label="单群 RPM"
+              hint="同一个群每分钟最多允许的 AI 请求次数，群内所有成员共享这个额度"
+            >
+              <NumberInput
+                min={0}
+                value={settings.aiRequestLimits.groupRpm}
+                onValueChange={(value) => {
+                  if (value === null) return;
+                  setSettings((prev) => ({
+                    ...prev,
+                    aiRequestLimits: {
+                      ...prev.aiRequestLimits,
+                      groupRpm: value,
+                    },
+                  }));
+                }}
+              />
+            </Field>
+            <NumberField
+              label="限额窗口（秒）"
+              value={settings.aiRequestLimits.windowMs}
+              msToSec
+              onChange={(value) =>
                 setSettings((prev) => ({
                   ...prev,
                   aiRequestLimits: {
                     ...prev.aiRequestLimits,
-                    userRpm: value,
+                    windowMs: value,
                   },
-                }));
-              }}
+                }))
+              }
             />
-          </Field>
-          <Field
-            label="单群 RPM"
-            hint="同一个群每分钟最多允许的 AI 请求次数，群内所有成员共享这个额度"
-          >
-            <NumberInput
-              min={0}
-              value={settings.aiRequestLimits.groupRpm}
-              onValueChange={(value) => {
-                if (value === null) return;
-                setSettings((prev) => ({
-                  ...prev,
-                  aiRequestLimits: {
-                    ...prev.aiRequestLimits,
-                    groupRpm: value,
-                  },
-                }));
-              }}
-            />
-          </Field>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>功能开关</CardTitle>
-          <CardDescription>
-            这部分影响交互观感和开放范围，用来调试 bot 的回复节奏
-          </CardDescription>
+          <CardTitle>
+            {mode === "reply"
+              ? "发送体验"
+              : mode === "tools"
+                ? "工具与输出开关"
+                : "运行开关"}
+          </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
-          <ToggleField
-            title="流式输出"
-            description="逐步输出文本，而不是一次性整段返回"
-            checked={settings.stream}
-            onChange={(checked) => updateSettings("stream", checked)}
-          />
-          <ToggleField
-            title="打字延迟"
-            description="按内容长度模拟更自然的发送停顿；实际总等待时间还会受累计上限控制"
-            checked={settings.enableTypingDelay}
-            onChange={(checked) => updateSettings("enableTypingDelay", checked)}
-          />
-          <ToggleField
-            title="Markdown 截图"
-            description="允许 AI 发送带主题和代码高亮的结构化内容截图"
-            checked={settings.enableMarkdownScreenshot}
-            onChange={(checked) =>
-              updateSettings("enableMarkdownScreenshot", checked)
-            }
-          />
-          <ToggleField
-            title="语音消息"
-            description="允许 AI 在合适场景下合成并发送语音消息"
-            checked={settings.audio.enabled}
-            onChange={(checked) =>
-              setSettings((prev) => ({
-                ...prev,
-                audio: { ...prev.audio, enabled: checked },
-              }))
-            }
-          />
-          <ToggleField
-            title="外部 Skills"
-            description="允许调用额外注册的技能扩展"
-            checked={settings.enableExternalSkills}
-            onChange={(checked) =>
-              updateSettings("enableExternalSkills", checked)
-            }
-          />
-          <ToggleField
-            title="调试日志"
-            description="打开后会输出更多运行时细节"
-            checked={settings.debug}
-            onChange={(checked) => updateSettings("debug", checked)}
-          />
-          <ToggleField
-            title="动态延迟"
-            description="根据群聊活跃度延后回复，减少刷屏感"
-            checked={settings.dynamicDelay.enabled}
-            onChange={(checked) =>
-              setSettings((prev) => ({
-                ...prev,
-                dynamicDelay: { ...prev.dynamicDelay, enabled: checked },
-              }))
-            }
-          />
+          {mode === "reply" ? (
+            <>
+              <ToggleField
+                title="流式输出"
+                description="逐步输出文本，而不是一次性整段返回"
+                checked={settings.stream}
+                onChange={(checked) => updateSettings("stream", checked)}
+              />
+              <ToggleField
+                title="打字延迟"
+                description="按内容长度模拟更自然的发送停顿；实际总等待时间还会受累计上限控制"
+                checked={settings.enableTypingDelay}
+                onChange={(checked) =>
+                  updateSettings("enableTypingDelay", checked)
+                }
+              />
+            </>
+          ) : null}
+          {mode === "tools" ? (
+            <>
+              <ToggleField
+                title="Markdown 截图"
+                description="允许 AI 发送带主题和代码高亮的结构化内容截图"
+                checked={settings.enableMarkdownScreenshot}
+                onChange={(checked) =>
+                  updateSettings("enableMarkdownScreenshot", checked)
+                }
+              />
+              <ToggleField
+                title="语音消息"
+                description="允许 AI 在合适场景下合成并发送语音消息"
+                checked={settings.audio.enabled}
+                onChange={(checked) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    audio: { ...prev.audio, enabled: checked },
+                  }))
+                }
+              />
+              <ToggleField
+                title="外部 Skills"
+                description="允许调用额外注册的技能扩展"
+                checked={settings.enableExternalSkills}
+                onChange={(checked) =>
+                  updateSettings("enableExternalSkills", checked)
+                }
+              />
+            </>
+          ) : null}
+          {mode === "runtime" ? (
+            <>
+              <ToggleField
+                title="调试日志"
+                description="打开后会输出更多运行时细节"
+                checked={settings.debug}
+                onChange={(checked) => updateSettings("debug", checked)}
+              />
+              <ToggleField
+                title="动态延迟"
+                description="根据群聊活跃度延后回复，减少刷屏感"
+                checked={settings.dynamicDelay.enabled}
+                onChange={(checked) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    dynamicDelay: { ...prev.dynamicDelay, enabled: checked },
+                  }))
+                }
+              />
+            </>
+          ) : null}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>外部 Skills 范围</CardTitle>
-          <CardDescription>
-            控制 chat 插件通过外部 Skills
-            能加载哪些扩展能力。留空表示允许全部已注册
-            Skills；如果想全部禁用，直接关闭上面的“外部 Skills”开关。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Toggle
-            checked={settings.allowedExternalSkills.length === 0}
-            onChange={setAllowAllExternalSkills}
-            label="允许全部已注册 Skills"
-          />
+      {mode === "tools" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>媒体与工具策略</CardTitle>
+            <CardDescription>
+              控制图片处理和非文本输出的使用频率
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <ToggleField
+              title="主模型读取图片"
+              description="聊天时把图片直接附加给支持多模态的主模型"
+              checked={base.isMultimodal}
+              onChange={(checked) => updateBase("isMultimodal", checked)}
+            />
+            <ToggleField
+              title="聊天媒体识别"
+              description="使用多模态工作模型生成图片和视频摘要"
+              checked={base.enableMediaRecognition}
+              onChange={(checked) =>
+                updateBase("enableMediaRecognition", checked)
+              }
+            />
+            <StrengthField
+              label="工具调用倾向"
+              value={settings.toolCallConstraintStrength}
+              onChange={(value) =>
+                updateSettings("toolCallConstraintStrength", value)
+              }
+            />
+            <StrengthField
+              label="语音使用倾向"
+              value={settings.audioUsageConstraintStrength}
+              onChange={(value) =>
+                updateSettings("audioUsageConstraintStrength", value)
+              }
+            />
+            <StrengthField
+              label="Markdown 使用倾向"
+              value={settings.markdownUsageConstraintStrength}
+              onChange={(value) =>
+                updateSettings("markdownUsageConstraintStrength", value)
+              }
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
-          {resources.skills.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              当前没有已注册的外部 Skills。
+      {mode === "tools" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>外部 Skills 范围</CardTitle>
+            <CardDescription>
+              控制 chat 插件通过外部 Skills
+              能加载哪些扩展能力。留空表示允许全部已注册
+              Skills；如果想全部禁用，直接关闭上面的“外部 Skills”开关。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Toggle
+              checked={settings.allowedExternalSkills.length === 0}
+              onChange={setAllowAllExternalSkills}
+              label="允许全部已注册 Skills"
+            />
+
+            {resources.skills.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                当前没有已注册的外部 Skills。
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {resources.skills.map((skill) => {
+                  const selected =
+                    settings.allowedExternalSkills.length === 0 ||
+                    settings.allowedExternalSkills.includes(skill);
+
+                  return (
+                    <label
+                      key={skill}
+                      className={cn(
+                        "flex cursor-pointer items-center justify-between rounded-md border px-4 py-3 text-sm transition-colors",
+                        selected
+                          ? "border-primary/45 bg-secondary/35 text-foreground"
+                          : "border-border/85 bg-card/78 text-muted-foreground hover:text-foreground",
+                        settings.allowedExternalSkills.length === 0
+                          ? "opacity-60"
+                          : "",
+                      )}
+                    >
+                      <span className="font-medium">{skill}</span>
+                      <input
+                        className="form-checkbox"
+                        type="checkbox"
+                        checked={selected}
+                        disabled={settings.allowedExternalSkills.length === 0}
+                        onChange={() => toggleAllowedExternalSkill(skill)}
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              关闭“允许全部已注册 Skills”后，AI 只能看到并加载下面勾选的外部
+              Skills。
             </p>
-          ) : (
-            <div className="space-y-2">
-              {resources.skills.map((skill) => {
-                const selected =
-                  settings.allowedExternalSkills.length === 0 ||
-                  settings.allowedExternalSkills.includes(skill);
+          </CardContent>
+        </Card>
+      ) : null}
 
-                return (
-                  <label
-                    key={skill}
-                    className={cn(
-                      "flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 text-sm transition-colors",
-                      selected
-                        ? "border-primary/45 bg-secondary/35 text-foreground"
-                        : "border-border/85 bg-card/78 text-muted-foreground hover:text-foreground",
-                      settings.allowedExternalSkills.length === 0
-                        ? "opacity-60"
-                        : "",
-                    )}
-                  >
-                    <span className="font-medium">{skill}</span>
-                    <input
-                      className="form-checkbox"
-                      type="checkbox"
-                      checked={selected}
-                      disabled={settings.allowedExternalSkills.length === 0}
-                      onChange={() => toggleAllowedExternalSkill(skill)}
-                    />
-                  </label>
-                );
-              })}
-            </div>
-          )}
+      {mode === "tools" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>已加载工具资源</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <TagGroup
+              title="Skills"
+              emptyLabel="当前没有外部 Skills"
+              items={resources.skills}
+            />
+            <TagGroup
+              title="Tools"
+              emptyLabel="当前没有注册 Tools"
+              items={resources.tools}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
-          <p className="text-xs text-muted-foreground">
-            关闭“允许全部已注册 Skills”后，AI 只能看到并加载下面勾选的外部
-            Skills。
-          </p>
-        </CardContent>
-      </Card>
+      {mode === "tools" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>语音消息</CardTitle>
+            <CardDescription>
+              配置独立的 GPT-SoVITS TTS 接口。启用后，AI
+              可以在合适场景下发送简短语音。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            <Field label="TTS API 地址" hint="例如 http://127.0.0.1:9880">
+              <Input
+                value={settings.audio.baseUrl}
+                onChange={(e) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    audio: { ...prev.audio, baseUrl: e.target.value },
+                  }))
+                }
+                placeholder="http://127.0.0.1:9880"
+              />
+            </Field>
+            <Field
+              label="TTS API Key"
+              hint="对应 GPT-SoVITS 服务端的 X-API-Key"
+            >
+              <Input
+                type="password"
+                value={settings.audio.apiKey}
+                onChange={(e) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    audio: { ...prev.audio, apiKey: e.target.value },
+                  }))
+                }
+                placeholder="留空表示不校验"
+              />
+            </Field>
+            <Field label="TTS 超时 (秒)" hint="语音合成请求的超时时间">
+              <NumberInput
+                value={settings.audio.timeoutMs / 1000}
+                onValueChange={(value) => {
+                  if (value === null) return;
+                  setSettings((prev) => ({
+                    ...prev,
+                    audio: {
+                      ...prev.audio,
+                      timeoutMs: value * 1000,
+                    },
+                  }));
+                }}
+              />
+            </Field>
+          </CardContent>
+        </Card>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>语音消息</CardTitle>
-          <CardDescription>
-            配置独立的 GPT-SoVITS TTS 接口。启用后，AI
-            可以在合适场景下发送简短语音。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <Field label="TTS API 地址" hint="例如 http://127.0.0.1:9880">
-            <Input
-              value={settings.audio.baseUrl}
-              onChange={(e) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  audio: { ...prev.audio, baseUrl: e.target.value },
-                }))
-              }
-              placeholder="http://127.0.0.1:9880"
-            />
-          </Field>
-          <Field label="TTS API Key" hint="对应 GPT-SoVITS 服务端的 X-API-Key">
-            <Input
-              type="password"
-              value={settings.audio.apiKey}
-              onChange={(e) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  audio: { ...prev.audio, apiKey: e.target.value },
-                }))
-              }
-              placeholder="留空表示不校验"
-            />
-          </Field>
-          <Field label="TTS 超时 (秒)" hint="语音合成请求的超时时间">
-            <NumberInput
-              value={settings.audio.timeoutMs / 1000}
-              onValueChange={(value) => {
-                if (value === null) return;
-                setSettings((prev) => ({
-                  ...prev,
-                  audio: {
-                    ...prev.audio,
-                    timeoutMs: value * 1000,
-                  },
-                }));
-              }}
-            />
-          </Field>
-        </CardContent>
-      </Card>
+      {mode === "runtime" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>动态延迟参数</CardTitle>
+            <CardDescription>
+              用于控制 bot 在热闹群里的“等一等再说”的策略
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            <Field label="互动窗口 (分钟)" hint="统计活跃度的时间范围">
+              <NumberInput
+                value={settings.dynamicDelay.interactionWindowMs / 60000}
+                onValueChange={(value) => {
+                  if (value === null) return;
+                  setSettings((prev) => ({
+                    ...prev,
+                    dynamicDelay: {
+                      ...prev.dynamicDelay,
+                      interactionWindowMs: value * 60000,
+                    },
+                  }));
+                }}
+              />
+            </Field>
+            <Field
+              label="基础延迟 (分钟)"
+              hint="每增加一个互动人，额外增加的延迟"
+            >
+              <NumberInput
+                value={settings.dynamicDelay.baseDelayMs / 60000}
+                onValueChange={(value) => {
+                  if (value === null) return;
+                  setSettings((prev) => ({
+                    ...prev,
+                    dynamicDelay: {
+                      ...prev.dynamicDelay,
+                      baseDelayMs: value * 60000,
+                    },
+                  }));
+                }}
+              />
+            </Field>
+            <Field label="最大延迟 (分钟)" hint="再热闹也不会超过这个等待时间">
+              <NumberInput
+                value={settings.dynamicDelay.maxDelayMs / 60000}
+                onValueChange={(value) => {
+                  if (value === null) return;
+                  setSettings((prev) => ({
+                    ...prev,
+                    dynamicDelay: {
+                      ...prev.dynamicDelay,
+                      maxDelayMs: value * 60000,
+                    },
+                  }));
+                }}
+              />
+            </Field>
+          </CardContent>
+        </Card>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>动态延迟参数</CardTitle>
-          <CardDescription>
-            用于控制 bot 在热闹群里的“等一等再说”的策略
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <Field label="互动窗口 (分钟)" hint="统计活跃度的时间范围">
-            <NumberInput
-              value={settings.dynamicDelay.interactionWindowMs / 60000}
-              onValueChange={(value) => {
-                if (value === null) return;
-                setSettings((prev) => ({
-                  ...prev,
-                  dynamicDelay: {
-                    ...prev.dynamicDelay,
-                    interactionWindowMs: value * 60000,
-                  },
-                }));
-              }}
+      {mode === "runtime" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>黑白名单</CardTitle>
+            <CardDescription>
+              支持按群号或用户号限制 chat 插件的触发范围
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <DatasourceMultiSelectField
+              id="ai-group-whitelist"
+              label="群聊白名单"
+              description="非空时仅对白名单群生效"
+              placeholder="点击选择群聊"
+              source="qq_groups"
+              options={groupOptions}
+              value={settings.whitelistGroups}
+              onChange={(value) => updateSettings("whitelistGroups", value)}
             />
-          </Field>
-          <Field
-            label="基础延迟 (分钟)"
-            hint="每增加一个互动人，额外增加的延迟"
-          >
-            <NumberInput
-              value={settings.dynamicDelay.baseDelayMs / 60000}
-              onValueChange={(value) => {
-                if (value === null) return;
-                setSettings((prev) => ({
-                  ...prev,
-                  dynamicDelay: {
-                    ...prev.dynamicDelay,
-                    baseDelayMs: value * 60000,
-                  },
-                }));
-              }}
+            <DatasourceMultiSelectField
+              id="ai-group-blacklist"
+              label="群聊黑名单"
+              description="命中后不回复"
+              placeholder="点击选择群聊"
+              source="qq_groups"
+              options={groupOptions}
+              value={settings.blacklistGroups}
+              onChange={(value) => updateSettings("blacklistGroups", value)}
             />
-          </Field>
-          <Field label="最大延迟 (分钟)" hint="再热闹也不会超过这个等待时间">
-            <NumberInput
-              value={settings.dynamicDelay.maxDelayMs / 60000}
-              onValueChange={(value) => {
-                if (value === null) return;
-                setSettings((prev) => ({
-                  ...prev,
-                  dynamicDelay: {
-                    ...prev.dynamicDelay,
-                    maxDelayMs: value * 60000,
-                  },
-                }));
-              }}
-            />
-          </Field>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>黑白名单</CardTitle>
-          <CardDescription>
-            支持按群号或用户号限制 chat 插件的触发范围
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <DatasourceMultiSelectField
-            id="ai-group-whitelist"
-            label="群聊白名单"
-            description="非空时仅对白名单群生效"
-            placeholder="点击选择群聊"
-            source="qq_groups"
-            options={groupOptions}
-            value={settings.whitelistGroups}
-            onChange={(value) => updateSettings("whitelistGroups", value)}
-          />
-          <DatasourceMultiSelectField
-            id="ai-group-blacklist"
-            label="群聊黑名单"
-            description="命中后不回复"
-            placeholder="点击选择群聊"
-            source="qq_groups"
-            options={groupOptions}
-            value={settings.blacklistGroups}
-            onChange={(value) => updateSettings("blacklistGroups", value)}
-          />
-
-          <Field
-            label="媒体分析黑名单用户"
-            hint="每行一个 QQ 号，这些人发的图片、视频、转发、卡片和群公告不会进入分析"
-          >
-            <Textarea
-              className="min-h-32"
-              value={arrayToLines(settings.mediaAnalysisBlacklistUsers)}
-              onChange={(e) =>
-                updateSettings(
-                  "mediaAnalysisBlacklistUsers",
-                  linesToArray(e.target.value),
-                )
-              }
-            />
-          </Field>
-        </CardContent>
-      </Card>
+            <Field
+              label="媒体分析黑名单用户"
+              hint="每行一个 QQ 号，这些人发的图片、视频、转发、卡片和群公告不会进入分析"
+            >
+              <Textarea
+                className="min-h-32"
+                value={arrayToLines(settings.mediaAnalysisBlacklistUsers)}
+                onChange={(e) =>
+                  updateSettings(
+                    "mediaAnalysisBlacklistUsers",
+                    linesToArray(e.target.value),
+                  )
+                }
+              />
+            </Field>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 
@@ -1582,7 +1539,9 @@ export function AIConfigPage() {
                   key={`emotion-${index}-${emotionName}`}
                   emotionName={emotionName}
                   examples={entry.examples}
-                  isDefault={emotionName === personalization.emotion.defaultEmotion}
+                  isDefault={
+                    emotionName === personalization.emotion.defaultEmotion
+                  }
                   onRename={(nextName) => renameEmotion(emotionName, nextName)}
                   onRemove={() => removeEmotion(emotionName)}
                   onExamplesChange={(examples) =>
@@ -1597,405 +1556,473 @@ export function AIConfigPage() {
     </div>
   );
 
-  const renderCapabilityTab = () => (
+  const renderCapabilityTab = (mode: "context" | "tools") => (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>记忆与话题</CardTitle>
-          <CardDescription>
-            这些能力决定 bot 是否会记住上下文、提炼话题，并在群冷场时主动说话
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <CapabilityCard
-            title="Memory"
-            description="主模型按需调用回忆工具，工作模型检索历史记录"
-            enabled={personalization.memory.enabled}
-            onEnabledChange={(checked) =>
-              setPersonalization((prev) => ({
-                ...prev,
-                memory: { ...prev.memory, enabled: checked },
-              }))
-            }
-          >
-            <NumberField
-              label="群聊回忆条数"
-              value={personalization.memory.groupHistoryLimit}
-              onChange={(value) =>
-                setPersonalization((prev) => ({
-                  ...prev,
-                  memory: { ...prev.memory, groupHistoryLimit: value },
-                }))
-              }
-            />
-            <NumberField
-              label="用户历史条数"
-              value={personalization.memory.userHistoryLimit}
-              onChange={(value) =>
-                setPersonalization((prev) => ({
-                  ...prev,
-                  memory: { ...prev.memory, userHistoryLimit: value },
-                }))
-              }
-            />
-          </CapabilityCard>
-          <CapabilityCard
-            title="Topic"
-            description="按固定时间窗口归纳群友历史话题，作为当前可见历史之外的背景参考"
-            enabled={personalization.topic.enabled}
-            onEnabledChange={(checked) =>
-              setPersonalization((prev) => ({
-                ...prev,
-                topic: { ...prev.topic, enabled: checked },
-              }))
-            }
-          >
-            <NumberField
-              label="窗口时长 (小时)"
-              value={personalization.topic.windowHours}
-              onChange={(value) =>
-                setPersonalization((prev) => ({
-                  ...prev,
-                  topic: { ...prev.topic, windowHours: value },
-                }))
-              }
-            />
-            <NumberField
-              label="回填窗口数"
-              value={personalization.topic.historyWindowCount}
-              onChange={(value) =>
-                setPersonalization((prev) => ({
-                  ...prev,
-                  topic: { ...prev.topic, historyWindowCount: value },
-                }))
-              }
-            />
-          </CapabilityCard>
-          <CapabilityCard
-            title="Planner"
-            description="在群聊冷场时判断是否主动插话"
-            enabled={personalization.planner.enabled}
-            onEnabledChange={(checked) =>
-              setPersonalization((prev) => ({
-                ...prev,
-                planner: { ...prev.planner, enabled: checked },
-              }))
-            }
-          >
-            <NumberField
-              label="空闲阈值 (分钟)"
-              value={personalization.planner.idleThresholdMs}
-              msToMin={true}
-              onChange={(value) =>
-                setPersonalization((prev) => ({
-                  ...prev,
-                  planner: { ...prev.planner, idleThresholdMs: value },
-                }))
-              }
-            />
-            <NumberField
-              label="最少消息数"
-              value={personalization.planner.idleMessageCount}
-              onChange={(value) =>
-                setPersonalization((prev) => ({
-                  ...prev,
-                  planner: { ...prev.planner, idleMessageCount: value },
-                }))
-              }
-            />
-            <Field label="空闲检查 bot ID" hint="每行一个；留空时使用全部 bot">
-              <Textarea
-                className="min-h-24"
-                value={arrayToLines(personalization.planner.idleCheckBotIds)}
-                onChange={(e) =>
-                  setPersonalization((prev) => ({
-                    ...prev,
-                    planner: {
-                      ...prev.planner,
-                      idleCheckBotIds: linesToArray(e.target.value),
-                    },
-                  }))
-                }
-              />
-            </Field>
-          </CapabilityCard>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>风格增强</CardTitle>
-          <CardDescription>
-            这些选项负责AI的小毛病，会明显改变 bot 的拟人感
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <CapabilityCard
-            title="Emoji"
-            description="选择表情图或 emoji 强化情绪输出"
-            enabled={personalization.emoji.enabled}
-            onEnabledChange={(checked) =>
-              setPersonalization((prev) => ({
-                ...prev,
-                emoji: { ...prev.emoji, enabled: checked },
-              }))
-            }
-          >
-            <Toggle
-              checked={personalization.emoji.useAISelection}
-              onChange={(checked) =>
-                setPersonalization((prev) => ({
-                  ...prev,
-                  emoji: { ...prev.emoji, useAISelection: checked },
-                }))
-              }
-              label={
-                personalization.emoji.useAISelection
-                  ? "AI 自动选择"
-                  : "手动角色过滤"
-              }
-            />
-            <Field label="可用角色" hint="每行一个角色名，留空表示不过滤">
-              <Textarea
-                className="min-h-24"
-                value={arrayToLines(personalization.emoji.characters)}
-                onChange={(e) =>
-                  setPersonalization((prev) => ({
-                    ...prev,
-                    emoji: {
-                      ...prev.emoji,
-                      characters: linesToArray(e.target.value),
-                    },
-                  }))
-                }
-              />
-            </Field>
-          </CapabilityCard>
-          <CapabilityCard
-            title="Expression"
-            description="按用户学习表达习惯，在该用户触发对话时注入供回复参考"
-            enabled={personalization.expression.enabled}
-            onEnabledChange={(checked) =>
-              setPersonalization((prev) => ({
-                ...prev,
-                expression: { ...prev.expression, enabled: checked },
-              }))
-            }
-          >
-            <NumberField
-              label="单用户触发阈值（消息数）"
-              value={personalization.expression.learnAfterMessages}
-              onChange={(value) =>
-                setPersonalization((prev) => ({
-                  ...prev,
-                  expression: {
-                    ...prev.expression,
-                    learnAfterMessages: value,
-                  },
-                }))
-              }
-            />
-            <NumberField
-              label="最大注入条数"
-              value={personalization.expression.sampleSize}
-              onChange={(value) =>
-                setPersonalization((prev) => ({
-                  ...prev,
-                  expression: { ...prev.expression, sampleSize: value },
-                }))
-              }
-            />
-          </CapabilityCard>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>外部能力</CardTitle>
-          <CardDescription>
-            搜索和网页阅读属于高影响能力，建议先按需打开，再配置超时和内容限制
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 xl:grid-cols-2">
-          <CapabilityCard
-            title="SearXNG 搜索"
-            description="允许 bot 主动搜索网页"
-            enabled={settings.searxng.enabled}
-            onEnabledChange={(checked) =>
-              setSettings((prev) => ({
-                ...prev,
-                searxng: { ...prev.searxng, enabled: checked },
-              }))
-            }
-          >
-            <Field label="搜索地址" hint="你的 SearXNG 服务地址">
-              <Input
-                value={settings.searxng.baseUrl}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    searxng: { ...prev.searxng, baseUrl: e.target.value },
-                  }))
-                }
-                placeholder="https://search.example.com"
-              />
-            </Field>
-            <NumberField
-              label="超时 (秒)"
-              value={settings.searxng.timeoutMs}
-              msToSec={true}
-              onChange={(value) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  searxng: { ...prev.searxng, timeoutMs: value },
-                }))
-              }
-            />
-            <NumberField
-              label="默认结果数"
-              value={settings.searxng.defaultLimit}
-              onChange={(value) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  searxng: { ...prev.searxng, defaultLimit: value },
-                }))
-              }
-            />
-            <NumberField
-              label="最大结果数"
-              value={settings.searxng.maxLimit}
-              onChange={(value) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  searxng: { ...prev.searxng, maxLimit: value },
-                }))
-              }
-            />
-            <NumberField
-              label="最大搜索次数"
-              value={settings.searxng.maxSearchCount}
-              onChange={(value) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  searxng: { ...prev.searxng, maxSearchCount: value },
-                }))
-              }
-            />
-          </CapabilityCard>
-          <CapabilityCard
-            title="网页阅读器"
-            description="抓取网页内容，让模型读取页面再总结"
-            enabled={settings.webReader.enabled}
-            onEnabledChange={(checked) =>
-              setSettings((prev) => ({
-                ...prev,
-                webReader: { ...prev.webReader, enabled: checked },
-              }))
-            }
-          >
-            <Toggle
-              checked={settings.webReader.useWorkingModel}
-              onChange={(checked) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  webReader: { ...prev.webReader, useWorkingModel: checked },
-                }))
-              }
-              label="使用工作模型概括总结"
-            />
-            <NumberField
-              label="读取超时 (秒)"
-              value={settings.webReader.timeoutMs}
-              msToSec={true}
-              onChange={(value) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  webReader: { ...prev.webReader, timeoutMs: value },
-                }))
-              }
-            />
-            <NumberField
-              label="浏览器超时 (秒)"
-              value={settings.webReader.browserTimeoutMs}
-              msToSec={true}
-              onChange={(value) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  webReader: { ...prev.webReader, browserTimeoutMs: value },
-                }))
-              }
-            />
-            <NumberField
-              label="最大 HTML 字节数"
-              value={settings.webReader.maxHtmlBytes}
-              onChange={(value) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  webReader: { ...prev.webReader, maxHtmlBytes: value },
-                }))
-              }
-            />
-            <NumberField
-              label="最大提取字符数"
-              value={settings.webReader.maxExtractedChars}
-              onChange={(value) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  webReader: { ...prev.webReader, maxExtractedChars: value },
-                }))
-              }
-            />
-            <Field label="允许的内容类型" hint="每行一个 MIME 类型">
-              <Textarea
-                className="min-h-24"
-                value={arrayToLines(settings.webReader.allowedContentTypes)}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    webReader: {
-                      ...prev.webReader,
-                      allowedContentTypes: linesToArray(e.target.value),
-                    },
-                  }))
-                }
-              />
-            </Field>
-          </CapabilityCard>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  return (
-    <div className="space-y-4 animate-soft-pop">
-      <Card className="overflow-hidden">
-        <CardContent className="p-0">
-          <div className="grid gap-px bg-border md:grid-cols-4">
-            {summaryItems.map((item) => (
-              <div key={item.label} className="bg-card p-5">
-                <p className="text-sm text-muted-foreground">{item.label}</p>
-                <p className="mt-2 text-lg font-semibold">{item.value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {item.hint}
-                </p>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {loading ? (
+      {mode === "context" ? (
         <Card>
-          <CardContent className="p-5 text-sm text-muted-foreground">
-            正在加载 AI 配置...
+          <CardHeader>
+            <CardTitle>当前对话上下文</CardTitle>
+            <CardDescription>控制每轮对话直接携带的历史范围</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <NumberField
+              label="上下文窗口"
+              value={base.maxContextTokens}
+              onChange={(value) => updateBase("maxContextTokens", value)}
+            />
+            <NumberField
+              label="群聊历史消息数"
+              value={base.historyCount}
+              onChange={(value) => updateBase("historyCount", value)}
+            />
           </CardContent>
         </Card>
       ) : null}
 
+      {mode === "context" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>记忆与话题</CardTitle>
+            <CardDescription>
+              这些能力决定 bot 是否会记住上下文、提炼话题，并在群冷场时主动说话
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <CapabilityCard
+              title="Memory"
+              description="主模型按需调用回忆工具，工作模型检索历史记录"
+              enabled={personalization.memory.enabled}
+              onEnabledChange={(checked) =>
+                setPersonalization((prev) => ({
+                  ...prev,
+                  memory: { ...prev.memory, enabled: checked },
+                }))
+              }
+            >
+              <NumberField
+                label="群聊回忆条数"
+                value={personalization.memory.groupHistoryLimit}
+                onChange={(value) =>
+                  setPersonalization((prev) => ({
+                    ...prev,
+                    memory: { ...prev.memory, groupHistoryLimit: value },
+                  }))
+                }
+              />
+              <NumberField
+                label="用户历史条数"
+                value={personalization.memory.userHistoryLimit}
+                onChange={(value) =>
+                  setPersonalization((prev) => ({
+                    ...prev,
+                    memory: { ...prev.memory, userHistoryLimit: value },
+                  }))
+                }
+              />
+            </CapabilityCard>
+            <CapabilityCard
+              title="Topic"
+              description="按固定时间窗口归纳群友历史话题，作为当前可见历史之外的背景参考"
+              enabled={personalization.topic.enabled}
+              onEnabledChange={(checked) =>
+                setPersonalization((prev) => ({
+                  ...prev,
+                  topic: { ...prev.topic, enabled: checked },
+                }))
+              }
+            >
+              <NumberField
+                label="窗口时长 (小时)"
+                value={personalization.topic.windowHours}
+                onChange={(value) =>
+                  setPersonalization((prev) => ({
+                    ...prev,
+                    topic: { ...prev.topic, windowHours: value },
+                  }))
+                }
+              />
+              <NumberField
+                label="回填窗口数"
+                value={personalization.topic.historyWindowCount}
+                onChange={(value) =>
+                  setPersonalization((prev) => ({
+                    ...prev,
+                    topic: { ...prev.topic, historyWindowCount: value },
+                  }))
+                }
+              />
+            </CapabilityCard>
+            <CapabilityCard
+              title="Planner"
+              description="在群聊冷场时判断是否主动插话"
+              enabled={personalization.planner.enabled}
+              onEnabledChange={(checked) =>
+                setPersonalization((prev) => ({
+                  ...prev,
+                  planner: { ...prev.planner, enabled: checked },
+                }))
+              }
+            >
+              <NumberField
+                label="空闲阈值 (分钟)"
+                value={personalization.planner.idleThresholdMs}
+                msToMin={true}
+                onChange={(value) =>
+                  setPersonalization((prev) => ({
+                    ...prev,
+                    planner: { ...prev.planner, idleThresholdMs: value },
+                  }))
+                }
+              />
+              <NumberField
+                label="最少消息数"
+                value={personalization.planner.idleMessageCount}
+                onChange={(value) =>
+                  setPersonalization((prev) => ({
+                    ...prev,
+                    planner: { ...prev.planner, idleMessageCount: value },
+                  }))
+                }
+              />
+              <Field
+                label="空闲检查 bot ID"
+                hint="每行一个；留空时使用全部 bot"
+              >
+                <Textarea
+                  className="min-h-24"
+                  value={arrayToLines(personalization.planner.idleCheckBotIds)}
+                  onChange={(e) =>
+                    setPersonalization((prev) => ({
+                      ...prev,
+                      planner: {
+                        ...prev.planner,
+                        idleCheckBotIds: linesToArray(e.target.value),
+                      },
+                    }))
+                  }
+                />
+              </Field>
+            </CapabilityCard>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {mode === "context" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>表达学习</CardTitle>
+            <CardDescription>按用户积累表达习惯并注入当前回复</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CapabilityCard
+              title="Expression"
+              description="按用户学习表达习惯，在该用户触发对话时注入供回复参考"
+              enabled={personalization.expression.enabled}
+              onEnabledChange={(checked) =>
+                setPersonalization((prev) => ({
+                  ...prev,
+                  expression: { ...prev.expression, enabled: checked },
+                }))
+              }
+            >
+              <NumberField
+                label="单用户触发阈值（消息数）"
+                value={personalization.expression.learnAfterMessages}
+                onChange={(value) =>
+                  setPersonalization((prev) => ({
+                    ...prev,
+                    expression: {
+                      ...prev.expression,
+                      learnAfterMessages: value,
+                    },
+                  }))
+                }
+              />
+              <NumberField
+                label="最大注入条数"
+                value={personalization.expression.sampleSize}
+                onChange={(value) =>
+                  setPersonalization((prev) => ({
+                    ...prev,
+                    expression: { ...prev.expression, sampleSize: value },
+                  }))
+                }
+              />
+            </CapabilityCard>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {mode === "tools" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>外部能力</CardTitle>
+            <CardDescription>
+              搜索和网页阅读属于高影响能力，建议先按需打开，再配置超时和内容限制
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 xl:grid-cols-2">
+            <CapabilityCard
+              title="SearXNG 搜索"
+              description="允许 bot 主动搜索网页"
+              enabled={settings.searxng.enabled}
+              onEnabledChange={(checked) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  searxng: { ...prev.searxng, enabled: checked },
+                }))
+              }
+            >
+              <Field label="搜索地址" hint="你的 SearXNG 服务地址">
+                <Input
+                  value={settings.searxng.baseUrl}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      searxng: { ...prev.searxng, baseUrl: e.target.value },
+                    }))
+                  }
+                  placeholder="https://search.example.com"
+                />
+              </Field>
+              <NumberField
+                label="超时 (秒)"
+                value={settings.searxng.timeoutMs}
+                msToSec={true}
+                onChange={(value) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    searxng: { ...prev.searxng, timeoutMs: value },
+                  }))
+                }
+              />
+              <NumberField
+                label="默认结果数"
+                value={settings.searxng.defaultLimit}
+                onChange={(value) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    searxng: { ...prev.searxng, defaultLimit: value },
+                  }))
+                }
+              />
+              <NumberField
+                label="最大结果数"
+                value={settings.searxng.maxLimit}
+                onChange={(value) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    searxng: { ...prev.searxng, maxLimit: value },
+                  }))
+                }
+              />
+              <NumberField
+                label="最大搜索次数"
+                value={settings.searxng.maxSearchCount}
+                onChange={(value) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    searxng: { ...prev.searxng, maxSearchCount: value },
+                  }))
+                }
+              />
+            </CapabilityCard>
+            <CapabilityCard
+              title="网页阅读器"
+              description="抓取网页内容，让模型读取页面再总结"
+              enabled={settings.webReader.enabled}
+              onEnabledChange={(checked) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  webReader: { ...prev.webReader, enabled: checked },
+                }))
+              }
+            >
+              <Toggle
+                checked={settings.webReader.useWorkingModel}
+                onChange={(checked) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    webReader: { ...prev.webReader, useWorkingModel: checked },
+                  }))
+                }
+                label="使用工作模型概括总结"
+              />
+              <NumberField
+                label="读取超时 (秒)"
+                value={settings.webReader.timeoutMs}
+                msToSec={true}
+                onChange={(value) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    webReader: { ...prev.webReader, timeoutMs: value },
+                  }))
+                }
+              />
+              <NumberField
+                label="浏览器超时 (秒)"
+                value={settings.webReader.browserTimeoutMs}
+                msToSec={true}
+                onChange={(value) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    webReader: { ...prev.webReader, browserTimeoutMs: value },
+                  }))
+                }
+              />
+              <NumberField
+                label="最大 HTML 字节数"
+                value={settings.webReader.maxHtmlBytes}
+                onChange={(value) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    webReader: { ...prev.webReader, maxHtmlBytes: value },
+                  }))
+                }
+              />
+              <NumberField
+                label="最大提取字符数"
+                value={settings.webReader.maxExtractedChars}
+                onChange={(value) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    webReader: { ...prev.webReader, maxExtractedChars: value },
+                  }))
+                }
+              />
+              <Field label="允许的内容类型" hint="每行一个 MIME 类型">
+                <Textarea
+                  className="min-h-24"
+                  value={arrayToLines(settings.webReader.allowedContentTypes)}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      webReader: {
+                        ...prev.webReader,
+                        allowedContentTypes: linesToArray(e.target.value),
+                      },
+                    }))
+                  }
+                />
+              </Field>
+            </CapabilityCard>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+
+  const renderStickerTab = () => (
+    <Card>
+      <CardHeader className="border-b">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <CardTitle>表情包管理</CardTitle>
+            <CardDescription className="mt-1">
+              选择文字模型可用于匹配的本地表情标签
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              {personalization.emoji.enabled ? "已启用" : "已关闭"}
+            </span>
+            <Switch
+              checked={personalization.emoji.enabled}
+              onCheckedChange={(checked) =>
+                setPersonalization((prev) => ({
+                  ...prev,
+                  emoji: { ...prev.emoji, enabled: checked },
+                }))
+              }
+            />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6 pt-5">
+        <div className="max-w-sm">
+          <StrengthField
+            label="使用倾向"
+            value={settings.emojiUsageConstraintStrength}
+            onChange={(value) =>
+              updateSettings("emojiUsageConstraintStrength", value)
+            }
+          />
+        </div>
+        <StickerPicker
+          options={stickerOptions}
+          characters={personalization.emoji.characters}
+          stickers={personalization.emoji.stickers}
+          disabled={!personalization.emoji.enabled}
+          onCharactersChange={(characters) =>
+            setPersonalization((prev) => ({
+              ...prev,
+              emoji: { ...prev.emoji, characters },
+            }))
+          }
+          onStickersChange={(stickers) =>
+            setPersonalization((prev) => ({
+              ...prev,
+              emoji: { ...prev.emoji, stickers },
+            }))
+          }
+        />
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="ai-config-page mx-auto w-full max-w-6xl space-y-5 [&_.panel-glow]:rounded-md [&_.panel-glow]:shadow-none">
+      <nav aria-label="AI 设置分类" className="overflow-x-auto border-b">
+        <div className="flex min-w-max items-end gap-1">
+          {configTabs.map(({ id, label, icon: Icon }) => {
+            const active = activeTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-current={active ? "page" : undefined}
+                onClick={() => setActiveTab(id)}
+                className={cn(
+                  "flex h-11 items-center gap-2 border-b-2 px-3 text-sm font-medium transition-[border-color,color,background-color,transform] duration-150 active:scale-[0.98]",
+                  active
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {loading ? (
+        <div className="border-y py-10 text-center text-sm text-muted-foreground">
+          正在加载 AI 配置...
+        </div>
+      ) : null}
+
       {!loading && activeTab === "model" ? renderModelTab() : null}
-      {!loading && activeTab === "behavior" ? renderBehaviorTab() : null}
-      {!loading && activeTab === "persona" ? renderPersonaTab() : null}
-      {!loading && activeTab === "capability" ? renderCapabilityTab() : null}
+      {!loading && activeTab === "reply" ? (
+        <div className="space-y-4">
+          {renderPersonaTab()}
+          {renderBehaviorTab("reply")}
+        </div>
+      ) : null}
+      {!loading && activeTab === "context"
+        ? renderCapabilityTab("context")
+        : null}
+      {!loading && activeTab === "tools" ? (
+        <div className="space-y-4">
+          {renderBehaviorTab("tools")}
+          {renderCapabilityTab("tools")}
+        </div>
+      ) : null}
+      {!loading && activeTab === "runtime"
+        ? renderBehaviorTab("runtime")
+        : null}
+      {!loading && activeTab === "stickers" ? renderStickerTab() : null}
     </div>
   );
 }
@@ -2030,40 +2057,10 @@ function Toggle({
   label: string;
 }) {
   return (
-    <div
-      role="checkbox"
-      aria-checked={checked}
-      tabIndex={0}
-      className={cn(
-        getCheckboxCardClass(checked, true),
-        "flex min-h-10 items-center gap-3 text-sm",
-      )}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (shouldIgnoreCardToggle(e.target)) {
-          return;
-        }
-        onChange(!checked);
-      }}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget && shouldIgnoreCardToggle(e.target)) {
-          return;
-        }
-        if (e.key === " " || e.key === "Enter") {
-          e.preventDefault();
-          e.stopPropagation();
-          onChange(!checked);
-        }
-      }}
-    >
-      <input
-        className="form-checkbox"
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
+    <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 border-y px-1 py-3 text-sm">
       <span>{label}</span>
-    </div>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </label>
   );
 }
 
@@ -2079,39 +2076,18 @@ function ToggleField({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div
-      role="checkbox"
-      aria-checked={checked}
-      tabIndex={0}
-      className={getCheckboxCardClass(checked)}
-      onClick={(e) => {
-        if (shouldIgnoreCardToggle(e.target)) {
-          return;
-        }
-        onChange(!checked);
-      }}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget && shouldIgnoreCardToggle(e.target)) {
-          return;
-        }
-        if (e.key === " " || e.key === "Enter") {
-          e.preventDefault();
-          onChange(!checked);
-        }
-      }}
-    >
-      <div className="flex items-start justify-between gap-4">
+    <div className="h-full min-h-20 border-b py-3 first:pt-0 last:border-b-0 last:pb-0">
+      <label className="flex h-full min-h-14 cursor-pointer items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold">{title}</p>
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
-        <input
-          className="form-checkbox mt-1"
-          type="checkbox"
+        <Switch
+          className="shrink-0"
           checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
+          onCheckedChange={onChange}
         />
-      </div>
+      </label>
     </div>
   );
 }
@@ -2149,6 +2125,30 @@ function NumberField({
         onValueChange={(value) => {
           if (value !== null) handleChange(value);
         }}
+      />
+    </Field>
+  );
+}
+
+function StrengthField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: Strength;
+  onChange: (value: Strength) => void;
+}) {
+  return (
+    <Field label={label}>
+      <SelectField
+        value={value}
+        onChange={(nextValue) => onChange(nextValue as Strength)}
+        options={[
+          { label: "低", value: "low" },
+          { label: "中", value: "medium" },
+          { label: "高", value: "high" },
+        ]}
       />
     </Field>
   );
@@ -2193,41 +2193,27 @@ function CapabilityCard({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      role="checkbox"
-      aria-checked={enabled}
-      tabIndex={0}
-      className={cn(getCheckboxCardClass(enabled), "space-y-4")}
-      onClick={(e) => {
-        if (shouldIgnoreCardToggle(e.target)) {
-          return;
-        }
-        onEnabledChange(!enabled);
-      }}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget && shouldIgnoreCardToggle(e.target)) {
-          return;
-        }
-        if (e.key === " " || e.key === "Enter") {
-          e.preventDefault();
-          onEnabledChange(!enabled);
-        }
-      }}
+    <section
+      className={cn(
+        "space-y-4 border-l-2 px-4 py-1",
+        enabled ? "border-primary" : "border-border",
+      )}
     >
-      <div className="flex items-start justify-between gap-4">
+      <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4">
         <div>
           <p className="text-base font-semibold">{title}</p>
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
-        <input
-          className="form-checkbox mt-1"
-          type="checkbox"
+        <Switch
+          className="shrink-0"
           checked={enabled}
-          onChange={(e) => onEnabledChange(e.target.checked)}
+          onCheckedChange={onEnabledChange}
         />
+      </label>
+      <div className={cn("space-y-3", !enabled && "opacity-55")}>
+        {children}
       </div>
-      <div className="space-y-3">{children}</div>
-    </div>
+    </section>
   );
 }
 
@@ -2250,7 +2236,7 @@ function TagGroup({
           {items.map((item) => (
             <span
               key={item}
-              className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground"
+              className="rounded-md bg-secondary px-3 py-1 text-xs text-secondary-foreground"
             >
               {item}
             </span>
@@ -2259,26 +2245,6 @@ function TagGroup({
       )}
     </div>
   );
-}
-
-function countEnabledCapabilities(
-  personalization: PersonalizationConfig,
-  settings: SettingsConfig,
-): number {
-  return [
-    true,
-    personalization.memory.enabled,
-    personalization.topic.enabled,
-    personalization.planner.enabled,
-    personalization.emoji.enabled,
-    personalization.expression.enabled,
-    settings.searxng.enabled,
-    settings.webReader.enabled,
-    settings.audio.enabled,
-    settings.dynamicDelay.enabled,
-    settings.enableExternalSkills,
-    settings.enableMarkdownScreenshot,
-  ].filter(Boolean).length;
 }
 
 function EmotionEditorCard({
@@ -2316,7 +2282,7 @@ function EmotionEditorCard({
   };
 
   return (
-    <div className="rounded-xl border bg-card/78 p-4">
+    <div className="border-l-2 border-border px-4 py-1">
       <div className="mb-3 flex items-center gap-2">
         <Input
           value={nameDraft}
@@ -2346,7 +2312,9 @@ function EmotionEditorCard({
         <Textarea
           className="min-h-32"
           value={arrayToLines(examples)}
-          onChange={(event) => onExamplesChange(linesToArray(event.target.value))}
+          onChange={(event) =>
+            onExamplesChange(linesToArray(event.target.value))
+          }
         />
       </Field>
     </div>

@@ -140,7 +140,7 @@ function renderHelp(help: any) {
           {commands.map((command: any, index: number) => (
             <div
               key={`${command?.cmd || command}-${index}`}
-              className="rounded-lg border bg-secondary/20 p-3"
+              className="border-l-2 border-border px-4 py-1"
             >
               <p className="font-mono text-xs">
                 {command?.cmd || String(command)}
@@ -555,7 +555,7 @@ export function PluginManagePage() {
                   setMode("detail");
                   loadDetail(plugin.name).then();
                 }}
-                className="group rounded-xl border bg-card/70 p-3 text-left transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
+                className="group border-l-2 border-border px-4 py-3 text-left transition-[border-color,background-color,transform] duration-150 hover:border-primary hover:bg-secondary/30 active:scale-[0.99]"
               >
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="min-w-0">
@@ -669,7 +669,7 @@ export function PluginManagePage() {
               </Button>
             </div>
             {installing ? (
-              <div className="flex items-center gap-2 rounded-lg border bg-secondary/30 p-3 text-sm">
+              <div className="flex items-center gap-2 border-l-2 border-primary px-4 py-2 text-sm">
                 <LoaderCircle className="h-4 w-4 animate-spin text-primary" />
                 正在 clone 仓库并安装依赖，请稍候...
               </div>
@@ -749,7 +749,7 @@ export function PluginManagePage() {
                     </Button>
                   </div>
 
-                  <div className="space-y-2 rounded-xl border bg-secondary/15 p-3">
+                  <div className="space-y-2 border-l-2 border-border px-4 py-1">
                     <p className="text-sm font-medium">仓库原地址</p>
                     <div className="flex flex-col gap-2 md:flex-row">
                       <Input
@@ -809,7 +809,7 @@ export function PluginManagePage() {
                 </CardHeader>
                 <CardContent>
                   {detail.readme ? (
-                    <div className="max-h-[540px] overflow-auto rounded-lg border bg-secondary/20 p-3">
+                    <div className="max-h-[540px] overflow-auto border-l-2 border-border px-4 py-1">
                       <Markdown content={detail.readme} />
                     </div>
                   ) : (
@@ -847,7 +847,7 @@ export function PluginManagePage() {
                 </p>
               </div>
             </div>
-            <div className="rounded-lg border bg-secondary/20 p-3 text-sm">
+            <div className="border-l-2 border-border px-4 py-1 text-sm">
               {missingServices.join(", ")}
             </div>
             <div className="mt-4 flex justify-end">

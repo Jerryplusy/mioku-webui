@@ -221,13 +221,13 @@ export function AboutPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-xl border bg-card/70 p-4">
+          <div className="border-l-2 border-border px-4 py-1">
             <p className="text-sm font-semibold">状态</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               {statusText}
             </p>
             {miokuUpdate?.changelog?.length ? (
-              <div className="mt-3 space-y-1 rounded-lg border bg-secondary/20 p-3 text-xs text-muted-foreground">
+              <div className="mt-3 space-y-1 border-t pt-3 text-xs text-muted-foreground">
                 {miokuUpdate.changelog.slice(0, 5).map((line) => (
                   <p key={line} className="break-all">
                     {line}
@@ -283,7 +283,7 @@ export function AboutPage() {
 
 function InfoStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border bg-card/72 p-4">
+    <div className="border-l-2 border-border px-4 py-1">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-2 text-lg font-semibold break-words">{value}</p>
     </div>

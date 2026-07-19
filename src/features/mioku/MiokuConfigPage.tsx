@@ -402,7 +402,10 @@ export function MiokuConfigPage() {
               </p>
             ) : (
               miokuConfig.napcat.map((napcat, index) => (
-                <div key={index} className="space-y-2 rounded-lg border p-3">
+                <div
+                  key={index}
+                  className="space-y-3 border-l-2 border-border px-4 py-1"
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">
                       {napcat.name || `实例 ${index + 1}`}
@@ -479,22 +482,31 @@ export function MiokuConfigPage() {
               <CardTitle>赞我功能</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center justify-between rounded-xl border p-4">
-                <div className="space-y-1">
-                  <Label className="text-sm font-medium">赞我</Label>
-                  <p className="text-sm text-muted-foreground">
-                    开启后收到指定指令会给发送者点赞
-                  </p>
-                </div>
-                <Switch
-                  checked={miokuConfig.boot.likeCommand.enabled}
-                  onCheckedChange={(checked) =>
-                    updateBootConfig((boot) => ({
-                      ...boot,
-                      likeCommand: { ...boot.likeCommand, enabled: checked },
-                    }))
-                  }
-                />
+              <div
+                className={`border-l-2 px-4 py-1 ${
+                  miokuConfig.boot.likeCommand.enabled
+                    ? "border-primary"
+                    : "border-border"
+                }`}
+              >
+                <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium">赞我</span>
+                    <p className="text-sm text-muted-foreground">
+                      开启后收到指定指令会给发送者点赞
+                    </p>
+                  </div>
+                  <Switch
+                    checked={miokuConfig.boot.likeCommand.enabled}
+                    onCheckedChange={(checked) =>
+                      updateBootConfig((boot) => ({
+                        ...boot,
+                        likeCommand: { ...boot.likeCommand, enabled: checked },
+                      }))
+                    }
+                    className="shrink-0"
+                  />
+                </label>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -562,24 +574,33 @@ export function MiokuConfigPage() {
               <CardTitle>好友与群设置</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center justify-between rounded-xl border p-4">
-                <div className="space-y-1">
-                  <Label className="text-sm font-medium">
-                    自动通过好友申请
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    开启后会自动同意新的好友申请
-                  </p>
-                </div>
-                <Switch
-                  checked={miokuConfig.boot.friend.autoApprove}
-                  onCheckedChange={(checked) =>
-                    updateBootConfig((boot) => ({
-                      ...boot,
-                      friend: { ...boot.friend, autoApprove: checked },
-                    }))
-                  }
-                />
+              <div
+                className={`border-l-2 px-4 py-1 ${
+                  miokuConfig.boot.friend.autoApprove
+                    ? "border-primary"
+                    : "border-border"
+                }`}
+              >
+                <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium">
+                      自动通过好友申请
+                    </span>
+                    <p className="text-sm text-muted-foreground">
+                      开启后会自动同意新的好友申请
+                    </p>
+                  </div>
+                  <Switch
+                    checked={miokuConfig.boot.friend.autoApprove}
+                    onCheckedChange={(checked) =>
+                      updateBootConfig((boot) => ({
+                        ...boot,
+                        friend: { ...boot.friend, autoApprove: checked },
+                      }))
+                    }
+                    className="shrink-0"
+                  />
+                </label>
               </div>
 
               <div className="space-y-2">

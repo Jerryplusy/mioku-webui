@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DatasourcePickerDialog } from "./DatasourcePickerDialog";
@@ -55,27 +56,6 @@ interface ConfigPageRendererProps {
 
 const fieldCardClass = "space-y-3";
 const emptySelectValue = "__mioku_empty_option__";
-
-function shouldIgnoreCardToggle(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return Boolean(
-    target.closest(
-      "input, textarea, select, button, a, label, [role='button'], [data-stop-card-toggle='true']",
-    ),
-  );
-}
-
-function getCheckboxCardClass(active: boolean): string {
-  return cn(
-    "rounded-xl border bg-card/78 p-4 transition-all duration-200 ease-out",
-    "active:scale-[0.992] active:bg-secondary/45",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
-    active ? "border-primary/45 bg-secondary/35" : "border-border/85",
-  );
-}
 
 function stripLeadingHeading(markdown: string, title: string): string {
   const normalizedTitle = String(title || "").trim();
@@ -280,26 +260,19 @@ export function ConfigPageRenderer({
         );
       case "switch":
         return (
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={!!value}
-            className={getCheckboxCardClass(!!value)}
-            onClick={() => onChange(!value)}
+          <label
+            className={cn(
+              "flex min-h-14 cursor-pointer items-center justify-between gap-4 border-l-2 px-4 py-2",
+              value ? "border-primary" : "border-border",
+            )}
           >
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-sm font-medium">{subField.label}</span>
-              <input
-                type="checkbox"
-                className="form-checkbox"
-                checked={!!value}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  onChange(e.target.checked);
-                }}
-              />
-            </div>
-          </button>
+            <span className="text-sm font-medium">{subField.label}</span>
+            <Switch
+              className="shrink-0"
+              checked={!!value}
+              onCheckedChange={onChange}
+            />
+          </label>
         );
       case "select":
         return (
@@ -422,43 +395,27 @@ export function ConfigPageRenderer({
 
       case "switch":
         return (
-          <div
+          <section
             key={field.key}
-            role="checkbox"
-            aria-checked={!!value}
-            tabIndex={0}
-            className={getCheckboxCardClass(!!value)}
-            onClick={(e) => {
-              if (shouldIgnoreCardToggle(e.target)) {
-                return;
-              }
-              handleFieldChange(field, !value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === " " || e.key === "Enter") {
-                e.preventDefault();
-                handleFieldChange(field, !value);
-              }
-            }}
+            className={cn(
+              "border-l-2 px-4 py-1",
+              value ? "border-primary" : "border-border",
+            )}
           >
-            <div className="flex items-start justify-between gap-4">
+            <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4">
               <div>
-                <Label htmlFor={field.key} className="text-sm font-semibold">
-                  {field.label}
-                </Label>
+                <span className="text-sm font-semibold">{field.label}</span>
                 {field.description && (
                   <p className="mt-1 text-xs text-muted-foreground">{field.description}</p>
                 )}
               </div>
-              <input
-                id={field.key}
-                className="form-checkbox mt-1"
-                type="checkbox"
+              <Switch
+                className="shrink-0"
                 checked={!!value}
-                onChange={(e) => handleFieldChange(field, e.target.checked)}
+                onCheckedChange={(checked) => handleFieldChange(field, checked)}
               />
-            </div>
-          </div>
+            </label>
+          </section>
         );
 
       case "select":
@@ -491,7 +448,7 @@ export function ConfigPageRenderer({
                 </div>
               </div>
               {selectedOption ? (
-                <div className="flex items-center gap-3 rounded-xl border bg-card/70 p-3 ">
+                <div className="flex items-center gap-3 border-l-2 border-border px-4 py-1">
                   <div className="h-10 w-10 overflow-hidden rounded-full bg-secondary/40">
                     {selectedOption.meta?.avatarUrl ? (
                       <img
@@ -610,7 +567,7 @@ export function ConfigPageRenderer({
                   {selectedOptions.map((option) => (
                     <div
                       key={option.value}
-                      className="flex items-center gap-3 rounded-xl border bg-card/70 p-3"
+                      className="flex items-center gap-3 border-l-2 border-border px-4 py-1"
                     >
                       <div className="h-10 w-10 overflow-hidden rounded-full bg-secondary/40">
                         {option.meta?.avatarUrl ? (
@@ -743,7 +700,10 @@ export function ConfigPageRenderer({
             ) : (
               <div className="space-y-3">
                 {items.map((item: any, index: number) => (
-                  <div key={index} className="rounded-xl border bg-card/78 p-4 space-y-3">
+                  <div
+                    key={index}
+                    className="space-y-3 border-l-2 border-border px-4 py-1"
+                  >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-muted-foreground">#{index + 1}</span>
                       <button

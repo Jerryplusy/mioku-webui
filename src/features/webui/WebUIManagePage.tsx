@@ -271,7 +271,7 @@ export function WebUIManagePage() {
           <CardTitle>WebUI 管理</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-lg border bg-card/80 p-3 text-sm">
+          <div className="border-l-2 border-border px-4 py-1 text-sm">
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">当前版本</span>
               <span className="font-medium">

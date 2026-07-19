@@ -87,7 +87,7 @@ export function DatasourceMultiSelectField({
           {selectedOptions.map((option) => (
             <div
               key={option.value}
-              className="flex items-center gap-3 rounded-xl border bg-card/70 p-3"
+              className="flex items-center gap-3 border-l-2 border-border px-4 py-1"
             >
               <div className="h-10 w-10 overflow-hidden rounded-full bg-secondary/40">
                 {option.meta?.avatarUrl ? (
