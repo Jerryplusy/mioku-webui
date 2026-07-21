@@ -38,21 +38,23 @@ import { cn } from "@/lib/utils";
 import { DatasourceMultiSelectField } from "@/features/mioku/DatasourceMultiSelectField";
 import type { DatasourceOption } from "@/features/plugin-config/datasource-utils";
 import { StickerPicker, type StickerOption } from "@/features/ai/StickerPicker";
+import { ProvidersModelsTab } from "@/features/ai/ProvidersModelsTab";
 
 type Strength = "low" | "medium" | "high";
 
 type BaseConfig = {
-  apiUrl: string;
-  apiKey: string;
-  model: string;
-  workingModel: string;
-  multimodalWorkingModel: string;
-  isMultimodal: boolean;
+  apiUrl?: string;
+  apiKey?: string;
+  model?: string;
+  workingModel?: string;
+  multimodalWorkingModel?: string;
+  isMultimodal?: boolean;
   enableMediaRecognition: boolean;
   maxContextTokens: number;
   temperature: number;
   historyCount: number;
   maxIterations: number;
+  providersManaged?: boolean;
 };
 
 type SettingsConfig = {
@@ -168,7 +170,7 @@ type ConfigTab =
   | "stickers";
 
 const configTabs = [
-  { id: "model", label: "模型与接口", icon: BrainCircuit },
+  { id: "model", label: "提供商与模型", icon: BrainCircuit },
   { id: "reply", label: "回复与角色", icon: MessageSquareText },
   { id: "context", label: "上下文与主动性", icon: Bot },
   { id: "tools", label: "工具与媒体", icon: Wrench },
@@ -181,12 +183,6 @@ const configTabs = [
 }>;
 
 const emptyBaseConfig: BaseConfig = {
-  apiUrl: "",
-  apiKey: "",
-  model: "",
-  workingModel: "",
-  multimodalWorkingModel: "",
-  isMultimodal: true,
   enableMediaRecognition: true,
   maxContextTokens: 128,
   temperature: 0.8,
@@ -449,7 +445,7 @@ export function AIConfigPage() {
         apiFetch<{ data: BaseConfig }>("/api/ai/base"),
         apiFetch<{ data: PersonalizationConfig }>("/api/ai/personalization"),
         apiFetch<{ data: SettingsConfig }>("/api/ai/settings"),
-        apiFetch<{ data: string[] }>("/api/ai/instances"),
+        apiFetch<{ data: Array<string | { name: string }> }>("/api/ai/instances"),
         apiFetch<{ data: { skills: string[]; tools: string[] } }>(
           "/api/ai/skills",
         ),
@@ -546,7 +542,9 @@ export function AIConfigPage() {
       setPersonalization(nextPersonalization);
       setSettings(nextSettings);
       setResources({
-        instances: instancesRes.data || [],
+        instances: (instancesRes.data || []).map((item) =>
+          typeof item === "string" ? item : item.name,
+        ),
         skills: skillsRes.data?.skills || [],
         tools: skillsRes.data?.tools || [],
       });
@@ -586,10 +584,17 @@ export function AIConfigPage() {
       const nextSettings = sanitizeSettingsForSave(settings);
       const nextPersonalization =
         sanitizePersonalizationForSave(personalization);
+      const basePayload = {
+        enableMediaRecognition: base.enableMediaRecognition,
+        maxContextTokens: base.maxContextTokens,
+        temperature: base.temperature,
+        historyCount: base.historyCount,
+        maxIterations: base.maxIterations,
+      };
       await Promise.all([
         apiFetch("/api/ai/base", {
           method: "PUT",
-          body: JSON.stringify(base),
+          body: JSON.stringify(basePayload),
         }),
         apiFetch("/api/ai/personalization", {
           method: "PUT",
@@ -782,85 +787,14 @@ export function AIConfigPage() {
   );
 
   const renderModelTab = () => (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>接口与模型分工</CardTitle>
-          <CardDescription>配置连接凭据，并为不同任务分配模型</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field label="API 地址" hint="例如 OpenAI 兼容网关或官方接口">
-            <Input
-              value={base.apiUrl}
-              onChange={(e) => updateBase("apiUrl", e.target.value)}
-              placeholder="https://api.openai.com/v1"
-            />
-          </Field>
-          <Field label="API Key" hint="保存后写入 chat/base.json">
-            <Input
-              type="password"
-              value={base.apiKey}
-              onChange={(e) => updateBase("apiKey", e.target.value)}
-              placeholder="sk-..."
-            />
-          </Field>
-          <Field label="主模型" hint="正式生成回复时使用，要求智商高">
-            <Input
-              value={base.model}
-              onChange={(e) => updateBase("model", e.target.value)}
-              placeholder="gpt-4.1 / gemini / deepseek..."
-            />
-          </Field>
-          <Field label="工作模型" hint="用于 planner 等轻量任务，要求速度快">
-            <Input
-              value={base.workingModel}
-              onChange={(e) => updateBase("workingModel", e.target.value)}
-              placeholder="deepseek/deepseek-v3.2-exp"
-            />
-          </Field>
-          <Field label="多模态工作模型" hint="用于图片描述和视觉任务，要求便宜">
-            <Input
-              value={base.multimodalWorkingModel}
-              onChange={(e) =>
-                updateBase("multimodalWorkingModel", e.target.value)
-              }
-              placeholder="doubao-seed-2.0-mini"
-            />
-          </Field>
-          <Field label="温度" hint="越高越发散，越低越稳定">
-            <NumberInput
-              step="0.1"
-              value={base.temperature}
-              onValueChange={(value) => {
-                if (value !== null) updateBase("temperature", value);
-              }}
-            />
-          </Field>
-          <Field label="最大迭代次数" hint="-1 表示不限制">
-            <NumberInput
-              value={base.maxIterations}
-              onValueChange={(value) => {
-                if (value !== null) updateBase("maxIterations", value);
-              }}
-            />
-          </Field>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>运行时实例</CardTitle>
-          <CardDescription>当前 AI 服务已经创建的实例</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <TagGroup
-            title="实例"
-            emptyLabel="当前没有额外实例"
-            items={resources.instances}
-          />
-        </CardContent>
-      </Card>
-    </div>
+    <ProvidersModelsTab
+      temperature={base.temperature}
+      maxIterations={base.maxIterations}
+      maxContextTokens={base.maxContextTokens}
+      onBaseChange={(patch) => {
+        setBase((prev) => ({ ...prev, ...patch }));
+      }}
+    />
   );
 
   const renderBehaviorTab = (mode: "reply" | "tools" | "runtime") => (
@@ -1111,15 +1045,16 @@ export function AIConfigPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
-            <ToggleField
-              title="主模型读取图片"
-              description="聊天时把图片直接附加给支持多模态的主模型"
-              checked={base.isMultimodal}
-              onChange={(checked) => updateBase("isMultimodal", checked)}
-            />
+            <div className="rounded-md border p-3 text-sm">
+              <p className="font-medium">主模型读取图片</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                由视觉模型能力自动推断（当前：
+                {base.isMultimodal ? "支持多模态" : "不支持/未绑定"}）
+              </p>
+            </div>
             <ToggleField
               title="聊天媒体识别"
-              description="使用多模态工作模型生成图片和视频摘要"
+              description="使用视觉角色模型生成图片和视频摘要"
               checked={base.enableMediaRecognition}
               onChange={(checked) =>
                 updateBase("enableMediaRecognition", checked)
