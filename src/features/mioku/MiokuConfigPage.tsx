@@ -33,6 +33,11 @@ type BootSystemConfig = {
   group: {
     minMemberCount: number;
   };
+  autoUpdate: {
+    enabled: boolean;
+    time: string;
+    frequency: "daily" | "weekly" | "monthly";
+  };
 };
 
 type MiokuConfig = {
@@ -72,6 +77,11 @@ const emptyBootConfig: BootSystemConfig = {
   group: {
     minMemberCount: 0,
   },
+  autoUpdate: {
+    enabled: true,
+    time: "03:00",
+    frequency: "daily",
+  },
 };
 
 const tabLabels: Record<ConfigTab, string> = {
@@ -91,6 +101,7 @@ function normalizeBootConfig(
   input?: Partial<BootSystemConfig> | null,
 ): BootSystemConfig {
   const raw = input || {};
+  const validFreq = ["daily", "weekly", "monthly"].includes(raw.autoUpdate?.frequency || "");
   const merged: BootSystemConfig = {
     likeCommand: {
       ...emptyBootConfig.likeCommand,
@@ -106,6 +117,12 @@ function normalizeBootConfig(
       minMemberCount:
         Number(raw.group?.minMemberCount) ||
         emptyBootConfig.group.minMemberCount,
+    },
+    autoUpdate: {
+      ...emptyBootConfig.autoUpdate,
+      ...(raw.autoUpdate || {}),
+      time: raw.autoUpdate?.time || emptyBootConfig.autoUpdate.time,
+      frequency: validFreq ? raw.autoUpdate!.frequency : emptyBootConfig.autoUpdate.frequency,
     },
   };
   return merged;
@@ -716,6 +733,84 @@ export function MiokuConfigPage() {
                 <p className="text-sm text-muted-foreground">
                   机器人新进一个群时检查。填 0 表示不限制，低于阈值自动退群
                 </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>自动更新</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div
+                className={`border-l-2 px-4 py-1 ${
+                  miokuConfig.boot.autoUpdate.enabled
+                    ? "border-primary"
+                    : "border-border"
+                }`}
+              >
+                <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium">启用自动更新</span>
+                    <p className="text-sm text-muted-foreground">
+                      到达设定时间后自动检查并更新全部包到最新，更新完成后自动重启
+                    </p>
+                  </div>
+                  <Switch
+                    checked={miokuConfig.boot.autoUpdate.enabled}
+                    onCheckedChange={(checked) =>
+                      updateBootConfig((boot) => ({
+                        ...boot,
+                        autoUpdate: { ...boot.autoUpdate, enabled: checked },
+                      }))
+                    }
+                    className="shrink-0"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="boot-autoupdate-time">更新时间</Label>
+                  <Input
+                    id="boot-autoupdate-time"
+                    type="time"
+                    value={miokuConfig.boot.autoUpdate.time}
+                    onChange={(event) =>
+                      updateBootConfig((boot) => ({
+                        ...boot,
+                        autoUpdate: { ...boot.autoUpdate, time: event.target.value },
+                      }))
+                    }
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    每天到这个时间自动检查更新
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="boot-autoupdate-frequency">更新频率</Label>
+                  <Select
+                    value={miokuConfig.boot.autoUpdate.frequency}
+                    onValueChange={(value) =>
+                      updateBootConfig((boot) => ({
+                        ...boot,
+                        autoUpdate: {
+                          ...boot.autoUpdate,
+                          frequency: value as "daily" | "weekly" | "monthly",
+                        },
+                      }))
+                    }
+                  >
+                    <SelectTrigger id="boot-autoupdate-frequency">
+                      <SelectValue placeholder="选择频率" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">每天</SelectItem>
+                      <SelectItem value="weekly">每周一</SelectItem>
+                      <SelectItem value="monthly">每月1号</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
