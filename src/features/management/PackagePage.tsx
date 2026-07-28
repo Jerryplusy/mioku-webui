@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { confirm } from "@/components/ui/confirm";
 import { apiFetch } from "@/lib/api";
 
 type TargetType = "plugin" | "service";
@@ -36,6 +37,24 @@ export function PackagePage({ target }: { target: TargetType }) {
   }, [target]);
 
   const install = async () => {
+    const targetLabel = target === "plugin" ? "插件" : "服务";
+    const ok = await confirm({
+      title: `安装${targetLabel}`,
+      message: `确认从以下地址安装${targetLabel}？\n${repoUrl}`,
+      confirmText: "安装",
+      cancelText: "取消",
+      variant: "danger",
+      children: (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
+          <p className="font-medium">提示</p>
+          <p className="mt-1">
+            从 URL 安装的{targetLabel}来自社区，请确认来源可信
+          </p>
+        </div>
+      ),
+    });
+    if (!ok) return;
+
     try {
       const res = await apiFetch<any>("/api/manage/install", {
         method: "POST",
@@ -81,7 +100,13 @@ export function PackagePage({ target }: { target: TargetType }) {
   };
 
   const remove = async (name: string) => {
-    if (!window.confirm(`确认删除 ${name}?`)) return;
+    const ok = await confirm({
+      title: `卸载${target === "plugin" ? "插件" : "服务"}`,
+      message: `确认卸载 ${name} 吗？`,
+      confirmText: "卸载",
+      cancelText: "取消",
+    });
+    if (!ok) return;
 
     try {
       await apiFetch<any>("/api/manage/remove", {
@@ -108,10 +133,7 @@ export function PackagePage({ target }: { target: TargetType }) {
             onChange={(e) => setRepoUrl(e.target.value)}
           />
           <div className="flex flex-wrap gap-2">
-            <Select
-              value={packageManager}
-              onValueChange={setPackageManager}
-            >
+            <Select value={packageManager} onValueChange={setPackageManager}>
               <SelectTrigger className="w-36">
                 <SelectValue placeholder="选择包管理器" />
               </SelectTrigger>

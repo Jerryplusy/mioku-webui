@@ -86,7 +86,11 @@ function toBrowserRepoUrl(raw: string): string {
   return value.replace(/^git\+/, "").replace(/\.git$/, "");
 }
 
-function getUpdateBadge(state: UpdateState, behind: number, checking?: boolean) {
+function getUpdateBadge(
+  state: UpdateState,
+  behind: number,
+  checking?: boolean,
+) {
   if (checking) {
     return (
       <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300">
@@ -297,7 +301,10 @@ export function PluginManagePage() {
 
     const chips = (
       <div className="flex items-center gap-2 whitespace-nowrap">
-        <span className="topbar-nav-item-enter" style={{ animationDelay: "0ms" }}>
+        <span
+          className="topbar-nav-item-enter"
+          style={{ animationDelay: "0ms" }}
+        >
           <button
             type="button"
             onClick={() => setMode("overview")}
@@ -306,7 +313,10 @@ export function PluginManagePage() {
             总览
           </button>
         </span>
-        <span className="topbar-nav-item-enter" style={{ animationDelay: "45ms" }}>
+        <span
+          className="topbar-nav-item-enter"
+          style={{ animationDelay: "45ms" }}
+        >
           <button
             type="button"
             onClick={() => setMode("install")}
@@ -441,6 +451,23 @@ export function PluginManagePage() {
       return;
     }
 
+    const ok = await confirm({
+      title: "安装插件",
+      message: `确认从以下地址安装插件？\n${repoUrlInput.trim()}`,
+      confirmText: "安装",
+      cancelText: "取消",
+      variant: "danger",
+      children: (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
+          <p className="font-medium">提示</p>
+          <p className="mt-1">
+            从 URL 安装的插件来自开发者社区，请确认来源可信
+          </p>
+        </div>
+      ),
+    });
+    if (!ok) return;
+
     setInstalling(true);
     setInstallOutput("");
     try {
@@ -546,97 +573,103 @@ export function PluginManagePage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {plugins.map((plugin) => (
-              <button
-                key={plugin.name}
-                type="button"
-                onClick={() => {
-                  setSelectedName(plugin.name);
-                  setMode("detail");
-                  loadDetail(plugin.name).then();
-                }}
-                className="group border-l-2 border-border px-4 py-3 text-left transition-[border-color,background-color,transform] duration-150 hover:border-primary hover:bg-secondary/30 active:scale-[0.99]"
-              >
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold">
-                        {plugin.name}
-                      </p>
-                      {plugin.isSystemPlugin ? (
-                        <Badge>system</Badge>
-                      ) : (
-                        <Badge>{plugin.version}</Badge>
-                      )}
-                      {(() => {
-                        const badge = getUpdateBadge(
-                          plugin.updateState,
-                          plugin.behind,
-                          plugin.updateChecking,
-                        );
-                        if (!badge) return null;
-                        return (
-                          <span
-                            className={badgeAnimNames.has(plugin.name) ? "animate-scale-in" : undefined}
-                          >
-                            {badge}
-                          </span>
-                        );
-                      })()}
+              {plugins.map((plugin) => (
+                <button
+                  key={plugin.name}
+                  type="button"
+                  onClick={() => {
+                    setSelectedName(plugin.name);
+                    setMode("detail");
+                    loadDetail(plugin.name).then();
+                  }}
+                  className="group border-l-2 border-border px-4 py-3 text-left transition-[border-color,background-color,transform] duration-150 hover:border-primary hover:bg-secondary/30 active:scale-[0.99]"
+                >
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold">
+                          {plugin.name}
+                        </p>
+                        {plugin.isSystemPlugin ? (
+                          <Badge>system</Badge>
+                        ) : (
+                          <Badge>{plugin.version}</Badge>
+                        )}
+                        {(() => {
+                          const badge = getUpdateBadge(
+                            plugin.updateState,
+                            plugin.behind,
+                            plugin.updateChecking,
+                          );
+                          if (!badge) return null;
+                          return (
+                            <span
+                              className={
+                                badgeAnimNames.has(plugin.name)
+                                  ? "animate-scale-in"
+                                  : undefined
+                              }
+                            >
+                              {badge}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      {plugin.description ? (
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {plugin.description}
+                        </p>
+                      ) : null}
                     </div>
-                    {plugin.description ? (
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {plugin.description}
-                      </p>
-                    ) : null}
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          updatePlugin(plugin.name).then();
+                        }}
+                        disabled={
+                          !plugin.hasGit ||
+                          updatingName === plugin.name ||
+                          removingName === plugin.name
+                        }
+                      >
+                        {updatingName === plugin.name ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "更新"
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removePlugin(plugin.name).then();
+                        }}
+                        disabled={
+                          plugin.isSystemPlugin ||
+                          updatingName === plugin.name ||
+                          removingName === plugin.name
+                        }
+                      >
+                        {plugin.isSystemPlugin ? (
+                          "卸载"
+                        ) : removingName === plugin.name ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "卸载"
+                        )}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        updatePlugin(plugin.name).then();
-                      }}
-                      disabled={
-                        !plugin.hasGit ||
-                        updatingName === plugin.name ||
-                        removingName === plugin.name
-                      }
-                    >
-                      {updatingName === plugin.name ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "更新"
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        removePlugin(plugin.name).then();
-                      }}
-                      disabled={
-                        plugin.isSystemPlugin ||
-                        updatingName === plugin.name ||
-                        removingName === plugin.name
-                      }
-                    >
-                      {plugin.isSystemPlugin ? (
-                        "卸载"
-                      ) : removingName === plugin.name ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "卸载"
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </button>
-            ))}
-            {!loadingOverview && plugins.length === 0 ? (
-              <p className="col-span-2 text-sm text-muted-foreground">暂无插件</p>
-            ) : null}
+                </button>
+              ))}
+              {!loadingOverview && plugins.length === 0 ? (
+                <p className="col-span-2 text-sm text-muted-foreground">
+                  暂无插件
+                </p>
+              ) : null}
             </div>
           </CardContent>
         </Card>

@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
+import { AlertTriangle, ShieldAlert } from "lucide-react";
 
 export interface ConfirmOptions {
   title?: string;
   message: string;
   confirmText?: string;
   cancelText?: string;
+  variant?: "default" | "danger";
+  children?: ReactNode;
 }
 
 export interface ConfirmDialogProps extends ConfirmOptions {
@@ -18,6 +20,8 @@ export function ConfirmDialog({
   message,
   confirmText = "确认",
   cancelText = "取消",
+  variant = "default",
+  children,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -37,6 +41,13 @@ export function ConfirmDialog({
     setTimeout(onCancel, 200);
   };
 
+  const isDanger = variant === "danger";
+  const iconColor = isDanger ? "text-red-500" : "text-yellow-500";
+  const bgColor = isDanger ? "bg-red-500/10" : "bg-yellow-500/10";
+  const btnColor = isDanger
+    ? "bg-red-600 hover:bg-red-700"
+    : "bg-primary hover:opacity-90";
+
   return (
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center transition-all duration-200 ${
@@ -50,13 +61,22 @@ export function ConfirmDialog({
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-yellow-500/10">
-            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+        <div className="flex items-start gap-3">
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${bgColor}`}
+          >
+            {isDanger ? (
+              <ShieldAlert className={`h-5 w-5 ${iconColor}`} />
+            ) : (
+              <AlertTriangle className={`h-5 w-5 ${iconColor}`} />
+            )}
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold">{title}</h3>
             <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+            {children && (
+              <div className="mt-3">{children}</div>
+            )}
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
@@ -68,7 +88,7 @@ export function ConfirmDialog({
           </button>
           <button
             onClick={handleConfirm}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-all hover:opacity-90"
+            className={`rounded-lg px-4 py-2 text-sm font-medium text-primary-foreground transition-all ${btnColor}`}
           >
             {confirmText}
           </button>

@@ -85,7 +85,11 @@ function toBrowserRepoUrl(raw: string): string {
   return value.replace(/^git\+/, "").replace(/\.git$/, "");
 }
 
-function getUpdateBadge(state: UpdateState, behind: number, checking?: boolean) {
+function getUpdateBadge(
+  state: UpdateState,
+  behind: number,
+  checking?: boolean,
+) {
   if (checking) {
     return (
       <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300">
@@ -404,6 +408,23 @@ export function ServiceManagePage() {
       return;
     }
 
+    const ok = await confirm({
+      title: "安装服务",
+      message: `确认从以下地址安装服务？\n${repoUrlInput.trim()}`,
+      confirmText: "安装",
+      cancelText: "取消",
+      variant: "danger",
+      children: (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
+          <p className="font-medium">提示</p>
+          <p className="mt-1">
+            从 URL 安装的服务来自开发者社区，请确认来源可信
+          </p>
+        </div>
+      ),
+    });
+    if (!ok) return;
+
     setInstalling(true);
     setInstallOutput("");
     try {
@@ -509,97 +530,103 @@ export function ServiceManagePage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {services.map((service) => (
-              <button
-                key={service.name}
-                type="button"
-                onClick={() => {
-                  setSelectedName(service.name);
-                  setMode("detail");
-                  loadDetail(service.name).then();
-                }}
-                className="group border-l-2 border-border px-4 py-3 text-left transition-[border-color,background-color,transform] duration-150 hover:border-primary hover:bg-secondary/30 active:scale-[0.99]"
-              >
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold">
-                        {service.name}
-                      </p>
-                      {service.isSystemService ? (
-                        <Badge>system</Badge>
-                      ) : (
-                        <Badge>{service.version}</Badge>
-                      )}
-                      {(() => {
-                        const badge = getUpdateBadge(
-                          service.updateState,
-                          service.behind,
-                          service.updateChecking,
-                        );
-                        if (!badge) return null;
-                        return (
-                          <span
-                            className={badgeAnimNames.has(service.name) ? "animate-scale-in" : undefined}
-                          >
-                            {badge}
-                          </span>
-                        );
-                      })()}
+              {services.map((service) => (
+                <button
+                  key={service.name}
+                  type="button"
+                  onClick={() => {
+                    setSelectedName(service.name);
+                    setMode("detail");
+                    loadDetail(service.name).then();
+                  }}
+                  className="group border-l-2 border-border px-4 py-3 text-left transition-[border-color,background-color,transform] duration-150 hover:border-primary hover:bg-secondary/30 active:scale-[0.99]"
+                >
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold">
+                          {service.name}
+                        </p>
+                        {service.isSystemService ? (
+                          <Badge>system</Badge>
+                        ) : (
+                          <Badge>{service.version}</Badge>
+                        )}
+                        {(() => {
+                          const badge = getUpdateBadge(
+                            service.updateState,
+                            service.behind,
+                            service.updateChecking,
+                          );
+                          if (!badge) return null;
+                          return (
+                            <span
+                              className={
+                                badgeAnimNames.has(service.name)
+                                  ? "animate-scale-in"
+                                  : undefined
+                              }
+                            >
+                              {badge}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      {service.description ? (
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {service.description}
+                        </p>
+                      ) : null}
                     </div>
-                    {service.description ? (
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {service.description}
-                      </p>
-                    ) : null}
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          updateService(service.name).then();
+                        }}
+                        disabled={
+                          !service.hasGit ||
+                          updatingName === service.name ||
+                          removingName === service.name
+                        }
+                      >
+                        {updatingName === service.name ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "更新"
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removeService(service.name).then();
+                        }}
+                        disabled={
+                          Boolean(service.isSystemService) ||
+                          updatingName === service.name ||
+                          removingName === service.name
+                        }
+                      >
+                        {service.isSystemService ? (
+                          "卸载"
+                        ) : removingName === service.name ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "卸载"
+                        )}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        updateService(service.name).then();
-                      }}
-                      disabled={
-                        !service.hasGit ||
-                        updatingName === service.name ||
-                        removingName === service.name
-                      }
-                    >
-                      {updatingName === service.name ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "更新"
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        removeService(service.name).then();
-                      }}
-                      disabled={
-                        Boolean(service.isSystemService) ||
-                        updatingName === service.name ||
-                        removingName === service.name
-                      }
-                    >
-                      {service.isSystemService ? (
-                        "卸载"
-                      ) : removingName === service.name ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "卸载"
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </button>
-            ))}
-            {!loadingOverview && services.length === 0 ? (
-              <p className="col-span-2 text-sm text-muted-foreground">暂无服务</p>
-            ) : null}
+                </button>
+              ))}
+              {!loadingOverview && services.length === 0 ? (
+                <p className="col-span-2 text-sm text-muted-foreground">
+                  暂无服务
+                </p>
+              ) : null}
             </div>
           </CardContent>
         </Card>

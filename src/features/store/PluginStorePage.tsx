@@ -21,6 +21,7 @@ import { Markdown } from "@/components/ui/markdown";
 import { useTopbar } from "@/components/layout/TopbarContext";
 import { apiFetch } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { confirm } from "@/components/ui/confirm";
 
 type StoreViewMode = "list" | "detail" | "url-install";
 type StoreType = "plugin" | "service" | "all";
@@ -144,7 +145,9 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 async function loadOfficialRegistry(): Promise<OfficialRegistry> {
   try {
-    return await fetchJson<OfficialRegistry>(`${GITHUB_RAW}/official-registry.json`);
+    return await fetchJson<OfficialRegistry>(
+      `${GITHUB_RAW}/official-registry.json`,
+    );
   } catch {
     return { plugins: {}, services: {} };
   }
@@ -159,7 +162,10 @@ async function searchNpmPackages(): Promise<NpmSearchObject[]> {
   return data.objects || [];
 }
 
-async function fetchBuiltinPkgJson(type: "plugin" | "service", key: string): Promise<any> {
+async function fetchBuiltinPkgJson(
+  type: "plugin" | "service",
+  key: string,
+): Promise<any> {
   const dir = type === "plugin" ? `plugins/${key}` : `src/services/${key}`;
   try {
     return await fetchJson<any>(`${GITHUB_RAW}/${dir}/package.json`);
@@ -179,8 +185,12 @@ function uniqueStrings(values: string[]): string[] {
 export function PluginStorePage() {
   const { setLeftContent, setRightContent } = useTopbar();
 
-  const [installedPlugins, setInstalledPlugins] = useState<InstalledPlugin[]>([]);
-  const [installedServices, setInstalledServices] = useState<InstalledService[]>([]);
+  const [installedPlugins, setInstalledPlugins] = useState<InstalledPlugin[]>(
+    [],
+  );
+  const [installedServices, setInstalledServices] = useState<
+    InstalledService[]
+  >([]);
   const [mode, setMode] = useState<StoreViewMode>("list");
   const [activeType, setActiveType] = useState<StoreType>("all");
   const [searchInput, setSearchInput] = useState("");
@@ -189,7 +199,9 @@ export function PluginStorePage() {
   const [allItems, setAllItems] = useState<StoreItem[]>([]);
   const [loadingList, setLoadingList] = useState(false);
 
-  const [officialServices, setOfficialServices] = useState<Record<string, string>>({});
+  const [officialServices, setOfficialServices] = useState<
+    Record<string, string>
+  >({});
 
   const [selectedPackage, setSelectedPackage] = useState("");
   const [detail, setDetail] = useState<StorePackageDetail | null>(null);
@@ -201,7 +213,9 @@ export function PluginStorePage() {
   const [installingKey, setInstallingKey] = useState("");
 
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
-  const [servicePickerMissing, setServicePickerMissing] = useState<string[]>([]);
+  const [servicePickerMissing, setServicePickerMissing] = useState<string[]>(
+    [],
+  );
   const [servicePickerCustomUrl, setServicePickerCustomUrl] = useState("");
 
   const navAnimSeedRef = useRef(0);
@@ -211,7 +225,9 @@ export function PluginStorePage() {
     try {
       const [pluginsRes, servicesRes] = await Promise.all([
         apiFetch<{ ok: true; data: InstalledPlugin[] }>("/api/manage/plugins"),
-        apiFetch<{ ok: true; data: InstalledService[] }>("/api/manage/services"),
+        apiFetch<{ ok: true; data: InstalledService[] }>(
+          "/api/manage/services",
+        ),
       ]);
       setInstalledPlugins(pluginsRes.data || []);
       setInstalledServices(servicesRes.data || []);
@@ -307,7 +323,9 @@ export function PluginStorePage() {
               name: key,
               npm,
               type,
-              description: pkgJson ? String(pkgJson.description || "").trim() : "",
+              description: pkgJson
+                ? String(pkgJson.description || "").trim()
+                : "",
               version: pkgJson ? String(pkgJson.version || "").trim() : "",
               keywords: ["mioku"],
               tags: [],
@@ -423,6 +441,24 @@ export function PluginStorePage() {
       toast.info(`${item.name} 已安装`);
       return;
     }
+
+    const typeLabel = item.type === "plugin" ? "插件" : "服务";
+    const ok = await confirm({
+      title: item.official ? `安装${typeLabel}` : `安装社区${typeLabel}`,
+      message: `确认安装 ${item.name}${item.version ? ` v${item.version}` : ""}？`,
+      confirmText: "安装",
+      cancelText: "取消",
+      variant: item.official ? "default" : "danger",
+      children: item.official ? undefined : (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
+          <p className="font-medium">提示</p>
+          <p className="mt-1">
+            此{typeLabel}来自开发者社区，请确认其中可能存在的风险
+          </p>
+        </div>
+      ),
+    });
+    if (!ok) return;
 
     setInstallingKey(item.npm);
     try {
@@ -544,7 +580,9 @@ export function PluginStorePage() {
       if (!options?.silent) {
         toast.info(`服务安装完成：${serviceName}`);
       }
-      setServicePickerMissing((prev) => prev.filter((item) => item !== serviceName));
+      setServicePickerMissing((prev) =>
+        prev.filter((item) => item !== serviceName),
+      );
     } catch {
       toast.error(`安装服务 ${serviceName} 失败`);
     }
@@ -645,7 +683,14 @@ export function PluginStorePage() {
       setLeftContent(null);
       setRightContent(null);
     };
-  }, [activeType, mode, navAnimSeed, loadingList, setLeftContent, setRightContent]);
+  }, [
+    activeType,
+    mode,
+    navAnimSeed,
+    loadingList,
+    setLeftContent,
+    setRightContent,
+  ]);
 
   return (
     <div className="space-y-4 animate-soft-pop">
@@ -707,94 +752,102 @@ export function PluginStorePage() {
                   : "服务市场"}
             </CardTitle>
             <CardDescription>
-              共 {filteredItems.length} 个结果{searchQuery ? ` · 搜索：${searchQuery}` : ""}
+              共 {filteredItems.length} 个结果
+              {searchQuery ? ` · 搜索：${searchQuery}` : ""}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(pagedItems || []).map((item) => (
-              <div
-                key={item.npm}
-                className="group cursor-pointer border-l-2 border-border px-4 py-3 transition-[border-color,background-color,transform] duration-150 hover:border-primary hover:bg-secondary/30 active:scale-[0.99]"
-                onClick={() => {
-                  setSelectedPackage(resolveDetailPackageName(item));
-                  setMode("detail");
-                  loadDetail(resolveDetailPackageName(item)).then();
-                }}
-              >
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold">{item.name}</p>
-                      <Badge className="bg-secondary">{item.type === "plugin" ? "插件" : "服务"}</Badge>
-                      {item.builtin ? (
-                        <Badge className="bg-violet-500/15 text-violet-700 dark:text-violet-300">
-                          内置
+              {(pagedItems || []).map((item) => (
+                <div
+                  key={item.npm}
+                  className="group cursor-pointer border-l-2 border-border px-4 py-3 transition-[border-color,background-color,transform] duration-150 hover:border-primary hover:bg-secondary/30 active:scale-[0.99]"
+                  onClick={() => {
+                    setSelectedPackage(resolveDetailPackageName(item));
+                    setMode("detail");
+                    loadDetail(resolveDetailPackageName(item)).then();
+                  }}
+                >
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold">
+                          {item.name}
+                        </p>
+                        <Badge className="bg-secondary">
+                          {item.type === "plugin" ? "插件" : "服务"}
                         </Badge>
-                      ) : item.official ? (
-                        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
-                          官方
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300">
-                          社区
-                        </Badge>
-                      )}
-                      {item.version && <Badge>{item.version}</Badge>}
-                      {item.tags.slice(0, 3).map((tag) => (
-                        <Badge key={tag} className="bg-secondary/60 text-muted-foreground">
-                          #{formatTag(tag)}
-                        </Badge>
-                      ))}
+                        {item.builtin ? (
+                          <Badge className="bg-violet-500/15 text-violet-700 dark:text-violet-300">
+                            内置
+                          </Badge>
+                        ) : item.official ? (
+                          <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                            官方
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300">
+                            社区
+                          </Badge>
+                        )}
+                        {item.version && <Badge>{item.version}</Badge>}
+                        {item.tags.slice(0, 3).map((tag) => (
+                          <Badge
+                            key={tag}
+                            className="bg-secondary/60 text-muted-foreground"
+                          >
+                            #{formatTag(tag)}
+                          </Badge>
+                        ))}
+                      </div>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {item.description || "暂无描述"}
+                      </p>
+                      <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
+                        {item.npm}
+                      </p>
                     </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {item.description || "暂无描述"}
-                    </p>
-                    <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
-                      {item.npm}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        installFromStore(item);
-                      }}
-                      disabled={
-                        (!item.repo && item.type === "plugin") ||
-                        isInstalled(item.name, item.type) ||
-                        installingKey === item.npm
-                      }
-                    >
-                      {installingKey === item.npm ? (
-                        <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" />
-                      ) : isInstalled(item.name, item.type) ? (
-                        "已安装"
-                      ) : (
-                        <>
-                          <Download className="mr-1.5 h-4 w-4" />
-                          安装
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          installFromStore(item);
+                        }}
+                        disabled={
+                          (!item.repo && item.type === "plugin") ||
+                          isInstalled(item.name, item.type) ||
+                          installingKey === item.npm
+                        }
+                      >
+                        {installingKey === item.npm ? (
+                          <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : isInstalled(item.name, item.type) ? (
+                          "已安装"
+                        ) : (
+                          <>
+                            <Download className="mr-1.5 h-4 w-4" />
+                            安装
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {!loadingList && pagedItems.length === 0 && (
-              <p className="col-span-2 text-sm text-muted-foreground">
-                {searchQuery ? "没有匹配的结果" : "暂无可用包"}
-              </p>
-            )}
+              {!loadingList && pagedItems.length === 0 && (
+                <p className="col-span-2 text-sm text-muted-foreground">
+                  {searchQuery ? "没有匹配的结果" : "暂无可用包"}
+                </p>
+              )}
 
-            {loadingList && (
-              <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-                正在加载插件市场...
-              </div>
-            )}
+              {loadingList && (
+                <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                  正在加载插件市场...
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between border-t pt-3">
@@ -863,7 +916,10 @@ export function PluginStorePage() {
                     )}
                     {detail.version && <Badge>{detail.version}</Badge>}
                     {detail.tags.slice(0, 5).map((tag) => (
-                      <Badge key={tag} className="bg-secondary/60 text-muted-foreground">
+                      <Badge
+                        key={tag}
+                        className="bg-secondary/60 text-muted-foreground"
+                      >
                         #{formatTag(tag)}
                       </Badge>
                     ))}
@@ -878,7 +934,8 @@ export function PluginStorePage() {
                       variant="outline"
                       onClick={() => {
                         const href = toBrowserRepoUrl(detail.repo);
-                        if (href) window.open(href, "_blank", "noopener,noreferrer");
+                        if (href)
+                          window.open(href, "_blank", "noopener,noreferrer");
                       }}
                       disabled={!detail.repo}
                     >
@@ -889,7 +946,11 @@ export function PluginStorePage() {
                       variant="outline"
                       onClick={() => {
                         if (detail.npmUrl) {
-                          window.open(detail.npmUrl, "_blank", "noopener,noreferrer");
+                          window.open(
+                            detail.npmUrl,
+                            "_blank",
+                            "noopener,noreferrer",
+                          );
                         }
                       }}
                     >
@@ -916,10 +977,14 @@ export function PluginStorePage() {
                   <div className="space-y-2 text-sm">
                     <p className="text-muted-foreground">包名：{detail.npm}</p>
                     {detail.installPath && (
-                      <p className="text-muted-foreground">安装目录：{detail.installPath}</p>
+                      <p className="text-muted-foreground">
+                        安装目录：{detail.installPath}
+                      </p>
                     )}
                     {detail.license && (
-                      <p className="text-muted-foreground">License：{detail.license}</p>
+                      <p className="text-muted-foreground">
+                        License：{detail.license}
+                      </p>
                     )}
                   </div>
 
@@ -946,7 +1011,9 @@ export function PluginStorePage() {
                       <Markdown content={detail.readme} />
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">该包没有 README。</p>
+                    <p className="text-sm text-muted-foreground">
+                      该包没有 README。
+                    </p>
                   )}
                 </CardContent>
               </Card>
@@ -1039,11 +1106,16 @@ export function PluginStorePage() {
                       <div>
                         <p className="text-sm font-semibold">{serviceName}</p>
                         <p className="text-xs text-muted-foreground">
-                          {hasOfficial ? "可从官方源安装" : "需手动提供仓库地址"}
+                          {hasOfficial
+                            ? "可从官方源安装"
+                            : "需手动提供仓库地址"}
                         </p>
                       </div>
                       {hasOfficial ? (
-                        <Button size="sm" onClick={() => installServiceByName(serviceName)}>
+                        <Button
+                          size="sm"
+                          onClick={() => installServiceByName(serviceName)}
+                        >
                           <Download className="mr-1.5 h-4 w-4" />
                           从官方安装
                         </Button>

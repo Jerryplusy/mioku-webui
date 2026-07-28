@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
 import { useTopbar } from "@/components/layout/TopbarContext";
-import { Plus, Trash2, Save } from "lucide-react";
+import { Plus, Trash2, Save, Package } from "lucide-react";
 import { toast } from "sonner";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import type { DatasourceOption } from "@/features/plugin-config/datasource-utils";
@@ -50,7 +50,14 @@ type NapCatConfig = {
   token: string;
 };
 
-type ConfigTab = "owners" | "admins" | "napcat" | "access" | "system";
+type PluginStatusItem = {
+  name: string;
+  enabled: boolean;
+  system: boolean;
+  description: string;
+};
+
+type ConfigTab = "owners" | "admins" | "napcat" | "access" | "system" | "plugins";
 
 const emptyBootConfig: BootSystemConfig = {
   likeCommand: {
@@ -73,6 +80,7 @@ const tabLabels: Record<ConfigTab, string> = {
   napcat: "Onebot配置",
   access: "访问控制",
   system: "系统功能",
+  plugins: "插件管理",
 };
 
 function cloneConfig<T>(value: T): T {
@@ -115,6 +123,8 @@ export function MiokuConfigPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<ConfigTab>("owners");
+  const [plugins, setPlugins] = useState<PluginStatusItem[]>([]);
+  const [loadingPlugins, setLoadingPlugins] = useState(false);
   const { setLeftContent, setRightContent } = useTopbar();
 
   const initialConfigRef = useRef<string>("");
@@ -161,6 +171,12 @@ export function MiokuConfigPage() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "plugins") {
+      loadPlugins();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const current = JSON.stringify(miokuConfig);
@@ -223,6 +239,34 @@ export function MiokuConfigPage() {
     );
     return () => setRightContent(null);
   }, [saving, hasChanges, setRightContent, miokuConfig]);
+
+  const loadPlugins = async () => {
+    setLoadingPlugins(true);
+    try {
+      const res = await apiFetch<{ data: PluginStatusItem[] }>("/api/config/plugins");
+      setPlugins(res.data || []);
+    } catch {
+      toast.error("加载插件列表失败");
+    } finally {
+      setLoadingPlugins(false);
+    }
+  };
+
+  const togglePlugin = async (name: string, enabled: boolean) => {
+    setPlugins((prev) =>
+      prev.map((p) => (p.name === name ? { ...p, enabled } : p)),
+    );
+    try {
+      await apiFetch("/api/config/plugins/toggle", {
+        method: "POST",
+        body: JSON.stringify({ name, enabled }),
+      });
+      toast.success(enabled ? `已启用 ${name}` : `已禁用 ${name}`);
+    } catch {
+      toast.error(`切换插件状态失败`);
+      loadPlugins();
+    }
+  };
 
   const updateBootConfig = (
     updater: (boot: BootSystemConfig) => BootSystemConfig,
@@ -474,6 +518,57 @@ export function MiokuConfigPage() {
       )}
 
       {!loading && activeTab === "access" && <AccessControlInline />}
+
+      {!loading && activeTab === "plugins" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>插件管理</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingPlugins ? (
+              <p className="text-sm text-muted-foreground">加载中...</p>
+            ) : plugins.length === 0 ? (
+              <p className="text-sm text-muted-foreground">暂无可用插件</p>
+            ) : (
+              <div className="space-y-1">
+                {plugins.map((plugin) => (
+                  <div
+                    key={plugin.name}
+                    className={`flex items-center justify-between gap-4 border-l-2 px-4 py-3 ${
+                      plugin.enabled ? "border-primary" : "border-border"
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="text-sm font-medium">{plugin.name}</span>
+                        {plugin.name === "boot" && (
+                          <span className="rounded bg-secondary/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            核心
+                          </span>
+                        )}
+                      </div>
+                      {plugin.description && (
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {plugin.description}
+                        </p>
+                      )}
+                    </div>
+                    <Switch
+                      checked={plugin.enabled}
+                      onCheckedChange={(checked) =>
+                        togglePlugin(plugin.name, checked)
+                      }
+                      disabled={plugin.name === "boot"}
+                      className="shrink-0"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {!loading && activeTab === "system" && (
         <>
