@@ -134,6 +134,9 @@ export function ProvidersModelsTab({
     working: undefined,
     vision: undefined,
   });
+  const [fallbackChain, setFallbackChain] = useState<string[]>([]);
+  const [fallbackOn, setFallbackOn] = useState<boolean>(true);
+  const [fallbackSaving, setFallbackSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -148,11 +151,19 @@ export function ProvidersModelsTab({
   const load = async () => {
     setLoading(true);
     try {
-      const [providersRes, modelsRes, rolesRes] = await Promise.all([
-        apiFetch<{ data: AIProvider[] }>("/api/ai/providers"),
-        apiFetch<{ data: AIModel[] }>("/api/ai/models"),
-        apiFetch<{ data: RoleBindings }>("/api/ai/roles"),
-      ]);
+      const [providersRes, modelsRes, rolesRes, fallbackRes] =
+        await Promise.all([
+          apiFetch<{ data: AIProvider[] }>("/api/ai/providers"),
+          apiFetch<{ data: AIModel[] }>("/api/ai/models"),
+          apiFetch<{ data: RoleBindings }>("/api/ai/roles"),
+          apiFetch<{
+            data: {
+              fallback: string[];
+              fallbackOnError: boolean;
+              liveFallback: string[];
+            };
+          }>("/api/ai/fallback"),
+        ]);
       setProviders(providersRes.data || []);
       setModels(modelsRes.data || []);
       setRoles({
@@ -160,6 +171,8 @@ export function ProvidersModelsTab({
         working: rolesRes.data?.working,
         vision: rolesRes.data?.vision,
       });
+      setFallbackChain(fallbackRes.data?.fallback ?? []);
+      setFallbackOn(fallbackRes.data?.fallbackOnError ?? true);
     } finally {
       setLoading(false);
     }
@@ -226,7 +239,8 @@ export function ProvidersModelsTab({
   };
 
   const removeProvider = async (id: string) => {
-    if (!window.confirm("确定删除该提供商？相关模型与角色绑定也会清理。")) return;
+    if (!window.confirm("确定删除该提供商？相关模型与角色绑定也会清理。"))
+      return;
     await apiFetch(`/api/ai/providers/${id}`, { method: "DELETE" });
     toast.success("提供商已删除");
     await load();
@@ -266,6 +280,33 @@ export function ProvidersModelsTab({
       body: JSON.stringify(next),
     });
     toast.success("角色绑定已保存");
+  };
+
+  const saveFallback = async (chain: string[], _on?: boolean) => {
+    setFallbackSaving(true);
+    try {
+      const res = await apiFetch<{
+        data: { fallback: string[]; liveFallback: string[] };
+      }>("/api/ai/fallback", {
+        method: "PUT",
+        body: JSON.stringify({ fallback: chain }),
+      });
+      setFallbackChain(res.data?.fallback ?? chain);
+      toast.success(
+        chain.length > 0
+          ? `主模型错误转移链已保存（${chain.length} 项）`
+          : "主模型错误转移已关闭",
+      );
+    } finally {
+      setFallbackSaving(false);
+    }
+  };
+
+  const modelLabel = (id: string): string => {
+    const found = models.find((m) => m.id === id);
+    if (!found) return id;
+    const provider = providers.find((p) => p.id === found.providerId);
+    return `${provider?.name ?? found.providerId} / ${found.name || found.modelId}`;
   };
 
   const addCustomModel = async () => {
@@ -343,7 +384,9 @@ export function ProvidersModelsTab({
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">{provider.apiUrl}</p>
+                <p className="text-xs text-muted-foreground">
+                  {provider.apiUrl}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   模型 {(modelsByProvider.get(provider.id) || []).length} 个 ·{" "}
                   {provider.hasApiKey ? "已配置 Key" : "未配置 Key"}
@@ -399,7 +442,9 @@ export function ProvidersModelsTab({
               <p className="text-sm font-medium">名称</p>
               <Input
                 value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, name: e.target.value }))
+                }
                 placeholder="OpenAI 主号"
               />
             </div>
@@ -408,7 +453,9 @@ export function ProvidersModelsTab({
               <Select
                 value={form.protocol}
                 onValueChange={(value: AIProtocol) => {
-                  const option = PROTOCOL_OPTIONS.find((p) => p.value === value);
+                  const option = PROTOCOL_OPTIONS.find(
+                    (p) => p.value === value,
+                  );
                   setForm((p) => ({
                     ...p,
                     protocol: value,
@@ -516,6 +563,142 @@ export function ProvidersModelsTab({
 
       <Card>
         <CardHeader>
+          <CardTitle>主模型错误转移链</CardTitle>
+          <CardDescription>主模型报错时使用此处配置的模型重试</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {fallbackChain.length === 0 ? (
+            <p className="text-sm text-muted-foreground">尚未配置错误转移</p>
+          ) : (
+            <div className="space-y-2">
+              {fallbackChain.map((id, index) => (
+                <div
+                  key={`${id}-${index}`}
+                  className="flex items-center gap-2 rounded-md border p-2"
+                >
+                  <span className="w-6 text-center text-xs text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <Select
+                    value={id}
+                    onValueChange={(value) => {
+                      if (!value || value === "__none__") return;
+                      const next = [...fallbackChain];
+                      next[index] = value;
+                      void saveFallback(next, fallbackOn);
+                    }}
+                    disabled={fallbackSaving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providers.map((provider) =>
+                        (modelsByProvider.get(provider.id) || []).map(
+                          (model) => (
+                            <SelectItem key={model.id} value={model.id}>
+                              {provider.name} / {model.name || model.modelId}
+                            </SelectItem>
+                          ),
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={index === 0 || fallbackSaving}
+                    onClick={() => {
+                      const next = [...fallbackChain];
+                      [next[index - 1], next[index]] = [
+                        next[index],
+                        next[index - 1],
+                      ];
+                      void saveFallback(next, fallbackOn);
+                    }}
+                  >
+                    ↑
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      index === fallbackChain.length - 1 || fallbackSaving
+                    }
+                    onClick={() => {
+                      const next = [...fallbackChain];
+                      [next[index], next[index + 1]] = [
+                        next[index + 1],
+                        next[index],
+                      ];
+                      void saveFallback(next, fallbackOn);
+                    }}
+                  >
+                    ↓
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={fallbackSaving}
+                    onClick={() => {
+                      const next = fallbackChain.filter((_, i) => i !== index);
+                      void saveFallback(next, fallbackOn);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value="__none__"
+              onValueChange={(value) => {
+                if (!value || value === "__none__") return;
+                if (fallbackChain.includes(value)) {
+                  toast.error("该模型已在错误转移链中");
+                  return;
+                }
+                void saveFallback([...fallbackChain, value], fallbackOn);
+              }}
+              disabled={fallbackSaving}
+            >
+              <SelectTrigger className="w-72">
+                <SelectValue placeholder="追加错误转移模型" />
+              </SelectTrigger>
+              <SelectContent>
+                {providers
+                  .flatMap((provider) =>
+                    (modelsByProvider.get(provider.id) || []).map((model) => ({
+                      ...model,
+                      providerName: provider.name,
+                    })),
+                  )
+                  .filter((model) => !fallbackChain.includes(model.id))
+                  .map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.providerName} / {model.name || model.modelId}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            {fallbackChain.length > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={fallbackSaving}
+                onClick={() => void saveFallback([], fallbackOn)}
+              >
+                清空
+              </Button>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>模型列表</CardTitle>
           <CardDescription>拉取或手动添加模型，供角色绑定使用</CardDescription>
         </CardHeader>
@@ -577,7 +760,9 @@ export function ProvidersModelsTab({
                   );
                   return (
                     <tr key={model.id} className="border-b last:border-0">
-                      <td className="py-2 pr-3">{provider?.name || model.providerId}</td>
+                      <td className="py-2 pr-3">
+                        {provider?.name || model.providerId}
+                      </td>
                       <td className="py-2 pr-3">
                         <div className="font-medium">
                           {model.name || model.modelId}
@@ -611,7 +796,9 @@ export function ProvidersModelsTab({
                             删除
                           </Button>
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-xs text-muted-foreground">
+                            —
+                          </span>
                         )}
                       </td>
                     </tr>
