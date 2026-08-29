@@ -184,7 +184,7 @@ const configTabs = [
 
 const emptyBaseConfig: BaseConfig = {
   enableMediaRecognition: true,
-  maxContextTokens: 128,
+  maxContextTokens: 256,
   temperature: 0.8,
   historyCount: 100,
   maxIterations: 20,

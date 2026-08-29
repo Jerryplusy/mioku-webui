@@ -3,6 +3,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { RouteError } from "@/components/layout/RouteError";
 import {
   AboutPage,
+  AdapterConfigPage,
+  AdapterManagePage,
   AIConfigPage,
   AIUsagePage,
   DashboardPage,
@@ -71,6 +73,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: "adapters",
+        element: (
+          <LazyWrap>
+            <AdapterManagePage />
+          </LazyWrap>
+        ),
+      },
+      {
         path: "plugin-config",
         element: (
           <LazyWrap>
@@ -83,6 +93,14 @@ export const router = createBrowserRouter([
         element: (
           <LazyWrap>
             <ServiceConfigPage />
+          </LazyWrap>
+        ),
+      },
+      {
+        path: "adapter-config",
+        element: (
+          <LazyWrap>
+            <AdapterConfigPage />
           </LazyWrap>
         ),
       },

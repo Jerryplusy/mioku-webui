@@ -260,19 +260,13 @@ export function ConfigPageRenderer({
         );
       case "switch":
         return (
-          <label
-            className={cn(
-              "flex min-h-14 cursor-pointer items-center justify-between gap-4 border-l-2 px-4 py-2",
-              value ? "border-primary" : "border-border",
-            )}
-          >
-            <span className="text-sm font-medium">{subField.label}</span>
+          <div className="flex justify-end">
             <Switch
               className="shrink-0"
               checked={!!value}
               onCheckedChange={onChange}
             />
-          </label>
+          </div>
         );
       case "select":
         return (

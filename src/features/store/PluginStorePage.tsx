@@ -24,7 +24,7 @@ import { toast } from "@/lib/toast";
 import { confirm } from "@/components/ui/confirm";
 
 type StoreViewMode = "list" | "detail" | "url-install";
-type StoreType = "plugin" | "service" | "all";
+type StoreType = "plugin" | "service" | "adapter" | "all";
 
 const PAGE_SIZE = 12;
 const NPM_SEARCH_URL = "https://registry.npmjs.org/-/v1/search";
@@ -39,6 +39,7 @@ interface OfficialEntry {
 interface OfficialRegistry {
   plugins: Record<string, OfficialEntry>;
   services: Record<string, OfficialEntry>;
+  adapters: Record<string, OfficialEntry>;
 }
 
 interface NpmSearchObject {
@@ -61,7 +62,7 @@ interface NpmSearchObject {
 interface StoreItem {
   name: string;
   npm: string;
-  type: "plugin" | "service";
+  type: "plugin" | "service" | "adapter";
   description: string;
   version: string;
   keywords: string[];
@@ -80,7 +81,7 @@ interface StorePackageDetail extends StoreItem {
   license: string;
   dependencies: Record<string, string>;
   requiredServices: string[];
-  installTarget: "plugin" | "service";
+  installTarget: "plugin" | "service" | "adapter";
   installPath: string;
 }
 
@@ -96,14 +97,16 @@ interface InstalledPlugin {
 
 type InstalledService = InstalledPlugin;
 
-function inferType(name: string): "plugin" | "service" | null {
+function inferType(name: string): "plugin" | "service" | "adapter" | null {
   if (name.startsWith("mioku-plugin-")) return "plugin";
   if (name.startsWith("mioku-service-")) return "service";
+  if (name.startsWith("mioku-adapter-")) return "adapter";
   return null;
 }
 
-function stripPrefix(name: string, type: "plugin" | "service"): string {
-  const prefix = type === "plugin" ? "mioku-plugin-" : "mioku-service-";
+function stripPrefix(name: string, type: "plugin" | "service" | "adapter"): string {
+  const prefix =
+    type === "plugin" ? "mioku-plugin-" : type === "service" ? "mioku-service-" : "mioku-adapter-";
   return name.startsWith(prefix) ? name.slice(prefix.length) : name;
 }
 
@@ -149,7 +152,7 @@ async function loadOfficialRegistry(): Promise<OfficialRegistry> {
       `${GITHUB_RAW}/official-registry.json`,
     );
   } catch {
-    return { plugins: {}, services: {} };
+    return { plugins: {}, services: {}, adapters: {} };
   }
 }
 
@@ -191,6 +194,9 @@ export function PluginStorePage() {
   const [installedServices, setInstalledServices] = useState<
     InstalledService[]
   >([]);
+  const [installedAdapters, setInstalledAdapters] = useState<
+    InstalledService[]
+  >([]);
   const [mode, setMode] = useState<StoreViewMode>("list");
   const [activeType, setActiveType] = useState<StoreType>("all");
   const [searchInput, setSearchInput] = useState("");
@@ -208,7 +214,7 @@ export function PluginStorePage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   const [urlInput, setUrlInput] = useState("");
-  const [urlTarget, setUrlTarget] = useState<"plugin" | "service">("plugin");
+  const [urlTarget, setUrlTarget] = useState<"plugin" | "service" | "adapter">("plugin");
   const [installing, setInstalling] = useState(false);
   const [installingKey, setInstallingKey] = useState("");
 
@@ -223,14 +229,18 @@ export function PluginStorePage() {
 
   const loadInstalled = async () => {
     try {
-      const [pluginsRes, servicesRes] = await Promise.all([
+      const [pluginsRes, servicesRes, adaptersRes] = await Promise.all([
         apiFetch<{ ok: true; data: InstalledPlugin[] }>("/api/manage/plugins"),
         apiFetch<{ ok: true; data: InstalledService[] }>(
           "/api/manage/services",
         ),
+        apiFetch<{ ok: true; data: InstalledService[] }>(
+          "/api/manage/adapters",
+        ),
       ]);
       setInstalledPlugins(pluginsRes.data || []);
       setInstalledServices(servicesRes.data || []);
+      setInstalledAdapters(adaptersRes.data || []);
     } catch {
       // silent
     }
@@ -262,6 +272,7 @@ export function PluginStorePage() {
 
       const officialPlugins = registry.plugins || {};
       const officialServices = registry.services || {};
+      const officialAdapters = registry.adapters || {};
       const seen = new Map<string, StoreItem>();
 
       for (const obj of npmResults) {
@@ -278,7 +289,9 @@ export function PluginStorePage() {
         const entry =
           type === "plugin"
             ? officialPlugins[stripPrefix(npm, type)]
-            : officialServices[stripPrefix(npm, type)];
+            : type === "service"
+              ? officialServices[stripPrefix(npm, type)]
+              : officialAdapters[stripPrefix(npm, type)];
 
         seen.set(npm, {
           name: stripPrefix(npm, type),
@@ -429,9 +442,10 @@ export function PluginStorePage() {
     ).slice(0, 12);
   }, [filteredItems]);
 
-  const isInstalled = (name: string, type: "plugin" | "service"): boolean => {
+  const isInstalled = (name: string, type: "plugin" | "service" | "adapter"): boolean => {
     if (type === "plugin") return installedPlugins.some((p) => p.name === name);
-    return installedServices.some((s) => s.name === name);
+    if (type === "service") return installedServices.some((s) => s.name === name);
+    return installedAdapters.some((a) => a.name === name);
   };
 
   const resolveDetailPackageName = (item: StoreItem) => item.npm;
@@ -442,7 +456,7 @@ export function PluginStorePage() {
       return;
     }
 
-    const typeLabel = item.type === "plugin" ? "插件" : "服务";
+    const typeLabel = item.type === "plugin" ? "插件" : item.type === "service" ? "服务" : "适配器";
     const ok = await confirm({
       title: item.official ? `安装${typeLabel}` : `安装社区${typeLabel}`,
       message: `确认安装 ${item.name}${item.version ? ` v${item.version}` : ""}？`,
@@ -625,6 +639,7 @@ export function PluginStorePage() {
       { key: "all", label: "全部" },
       { key: "plugin", label: "插件" },
       { key: "service", label: "服务" },
+      { key: "adapter", label: "适配器" },
     ];
 
     const chips = (
@@ -749,7 +764,9 @@ export function PluginStorePage() {
                 ? "插件市场"
                 : activeType === "plugin"
                   ? "插件市场"
-                  : "服务市场"}
+                  : activeType === "service"
+                    ? "服务市场"
+                    : "适配器市场"}
             </CardTitle>
             <CardDescription>
               共 {filteredItems.length} 个结果
@@ -775,7 +792,11 @@ export function PluginStorePage() {
                           {item.name}
                         </p>
                         <Badge className="bg-secondary">
-                          {item.type === "plugin" ? "插件" : "服务"}
+                          {item.type === "plugin"
+                            ? "插件"
+                            : item.type === "service"
+                              ? "服务"
+                              : "适配器"}
                         </Badge>
                         {item.builtin ? (
                           <Badge className="bg-violet-500/15 text-violet-700 dark:text-violet-300">
@@ -899,7 +920,11 @@ export function PluginStorePage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle>{detail.name}</CardTitle>
                     <Badge className="bg-secondary">
-                      {detail.type === "plugin" ? "插件" : "服务"}
+                      {detail.type === "plugin"
+                        ? "插件"
+                        : detail.type === "service"
+                          ? "服务"
+                          : "适配器"}
                     </Badge>
                     {detail.builtin ? (
                       <Badge className="bg-violet-500/15 text-violet-700 dark:text-violet-300">
@@ -1059,6 +1084,17 @@ export function PluginStorePage() {
                   }`}
                 >
                   服务
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUrlTarget("adapter")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                    urlTarget === "adapter"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  适配器
                 </button>
               </div>
               <Button onClick={installFromUrl} disabled={installing}>

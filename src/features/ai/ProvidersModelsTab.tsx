@@ -5,6 +5,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  X,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +53,7 @@ export type AIModel = {
   name: string;
   capabilities: string[];
   isCustom?: boolean;
+  thinkingLevel?: string;
 };
 
 export type RoleBindings = Record<AIModelRole, string | undefined>;
@@ -92,6 +94,41 @@ const ROLE_META: Array<{
   { role: "working", title: "工作模型", hint: "planner 等轻量任务，速度优先" },
   { role: "vision", title: "视觉模型", hint: "图片/视频描述，成本优先" },
 ];
+
+const THINKING_LEVEL_OPTIONS = [
+  { value: "off", label: "off" },
+  { value: "low", label: "low" },
+  { value: "medium", label: "medium" },
+  { value: "high", label: "high" },
+  { value: "xhigh", label: "xhigh" },
+  { value: "max", label: "max" },
+] as const;
+
+// gemini 协议只有 off / low / medium / high 四档
+const GEMINI_THINKING_LEVEL_OPTIONS = THINKING_LEVEL_OPTIONS.filter((option) =>
+  ["off", "low", "medium", "high"].includes(option.value),
+);
+
+const thinkingOptionsFor = (protocol?: AIProtocol) =>
+  protocol === "gemini"
+    ? GEMINI_THINKING_LEVEL_OPTIONS
+    : THINKING_LEVEL_OPTIONS;
+
+type AddModelFormState = {
+  providerId: string;
+  modelId: string;
+  name: string;
+  vision: boolean;
+  toolUse: boolean;
+};
+
+const emptyAddModelForm = (): AddModelFormState => ({
+  providerId: "",
+  modelId: "",
+  name: "",
+  vision: false,
+  toolUse: false,
+});
 
 type ProviderForm = {
   id?: string;
@@ -142,14 +179,17 @@ export function ProvidersModelsTab({
   const [testingId, setTestingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<ProviderForm>(emptyForm());
-  const [customModel, setCustomModel] = useState({
-    providerId: "",
-    modelId: "",
-    name: "",
-  });
+  const [addModelOpen, setAddModelOpen] = useState(false);
+  const [addModelForm, setAddModelForm] = useState<AddModelFormState>(
+    emptyAddModelForm(),
+  );
+  const [addModelSaving, setAddModelSaving] = useState(false);
+  const [fallbackAddOpen, setFallbackAddOpen] = useState(false);
+  const [fallbackCandidate, setFallbackCandidate] = useState("");
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (options: { silent?: boolean } = {}) => {
+    // silent：后台刷新数据但不显示加载占位，避免每次改动都整页闪烁
+    if (!options.silent) setLoading(true);
     try {
       const [providersRes, modelsRes, rolesRes, fallbackRes] =
         await Promise.all([
@@ -174,7 +214,7 @@ export function ProvidersModelsTab({
       setFallbackChain(fallbackRes.data?.fallback ?? []);
       setFallbackOn(fallbackRes.data?.fallbackOnError ?? true);
     } finally {
-      setLoading(false);
+      if (!options.silent) setLoading(false);
     }
   };
 
@@ -232,7 +272,7 @@ export function ProvidersModelsTab({
         toast.success("提供商已创建");
       }
       setFormOpen(false);
-      await load();
+      await load({ silent: true });
     } finally {
       setSaving(false);
     }
@@ -243,7 +283,7 @@ export function ProvidersModelsTab({
       return;
     await apiFetch(`/api/ai/providers/${id}`, { method: "DELETE" });
     toast.success("提供商已删除");
-    await load();
+    await load({ silent: true });
   };
 
   const testProvider = async (id: string) => {
@@ -256,7 +296,7 @@ export function ProvidersModelsTab({
         toast.success(
           `连通成功${res.data.models?.length ? `，模型 ${res.data.models.length} 个` : ""}`,
         );
-        await load();
+        await load({ silent: true });
       } else {
         toast.error(res.data?.error || "连通失败");
       }
@@ -270,7 +310,7 @@ export function ProvidersModelsTab({
       method: "POST",
     });
     toast.success("模型列表已刷新");
-    await load();
+    await load({ silent: true });
   };
 
   const saveRoles = async (next: RoleBindings) => {
@@ -309,26 +349,89 @@ export function ProvidersModelsTab({
     return `${provider?.name ?? found.providerId} / ${found.name || found.modelId}`;
   };
 
-  const addCustomModel = async () => {
-    if (!customModel.providerId || !customModel.modelId) {
+  const submitAddModel = async () => {
+    if (!addModelForm.providerId || !addModelForm.modelId.trim()) {
       toast.error("请填写提供商和模型 ID");
       return;
     }
-    await apiFetch("/api/ai/models", {
-      method: "POST",
-      body: JSON.stringify(customModel),
-    });
-    toast.success("自定义模型已添加");
-    setCustomModel({ providerId: "", modelId: "", name: "" });
-    await load();
+    setAddModelSaving(true);
+    try {
+      const capabilities = ["text"];
+      if (addModelForm.vision) capabilities.push("vision");
+      if (addModelForm.toolUse) capabilities.push("tool-use");
+      const res = await apiFetch<{ data: AIModel }>("/api/ai/models", {
+        method: "POST",
+        body: JSON.stringify({
+          providerId: addModelForm.providerId,
+          modelId: addModelForm.modelId.trim(),
+          name: addModelForm.name.trim() || undefined,
+          capabilities,
+        }),
+      });
+      // 本地直接插入新模型，避免整页重新加载
+      if (res.data?.id) {
+        setModels((prev) => [
+          ...prev.filter((m) => m.id !== res.data!.id),
+          res.data!,
+        ]);
+      }
+      toast.success("自定义模型已添加");
+      setAddModelOpen(false);
+      setAddModelForm(emptyAddModelForm());
+    } finally {
+      setAddModelSaving(false);
+    }
   };
 
-  const removeCustomModel = async (id: string) => {
-    await apiFetch(`/api/ai/models/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
-    toast.success("自定义模型已删除");
-    await load();
+  const setModelThinkingLevel = async (model: AIModel, value: string) => {
+    const thinkingLevel = value === "__default__" ? null : value;
+    try {
+      const res = await apiFetch<{ ok: boolean }>(
+        `/api/ai/models/${encodeURIComponent(model.id)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ thinkingLevel }),
+        },
+      );
+      if (!res.ok) {
+        toast.error("思考等级更新失败");
+        return;
+      }
+      // 原地更新当前行的思考等级，不整页刷新
+      setModels((prev) =>
+        prev.map((m) =>
+          m.id === model.id
+            ? { ...m, thinkingLevel: thinkingLevel ?? undefined }
+            : m,
+        ),
+      );
+      toast.success("思考等级已更新");
+    } catch {
+      // apiFetch 已对请求失败弹出过提示
+    }
+  };
+
+  const removeModel = async (model: AIModel) => {
+    if (
+      !window.confirm(
+        `确定删除模型 ${model.name || model.modelId}？相关角色绑定会一并清理。`,
+      )
+    ) {
+      return;
+    }
+    // 先从界面移除，再后台同步角色绑定等关联数据
+    setModels((prev) => prev.filter((m) => m.id !== model.id));
+    try {
+      await apiFetch(`/api/ai/models/${encodeURIComponent(model.id)}`, {
+        method: "DELETE",
+      });
+      toast.success("模型已删除");
+    } catch {
+      // 删除失败时恢复界面数据（apiFetch 已弹出错误提示）
+      await load({ silent: true });
+      return;
+    }
+    await load({ silent: true });
   };
 
   if (loading) {
@@ -432,91 +535,82 @@ export function ProvidersModelsTab({
         </CardContent>
       </Card>
 
-      {formOpen ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>{form.id ? "编辑提供商" : "新增提供商"}</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1">
-              <p className="text-sm font-medium">名称</p>
-              <Input
-                value={form.name}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, name: e.target.value }))
-                }
-                placeholder="OpenAI 主号"
-              />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium">协议</p>
-              <Select
-                value={form.protocol}
-                onValueChange={(value: AIProtocol) => {
-                  const option = PROTOCOL_OPTIONS.find(
-                    (p) => p.value === value,
-                  );
-                  setForm((p) => ({
-                    ...p,
-                    protocol: value,
-                    apiUrl: option?.defaultUrl || p.apiUrl,
-                  }));
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROTOCOL_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium">API URL</p>
-              <Input
-                value={form.apiUrl}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, apiUrl: e.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium">
-                API Key{form.id ? "（留空表示不修改）" : ""}
-              </p>
-              <Input
-                type="password"
-                value={form.apiKey}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, apiKey: e.target.value }))
-                }
-                placeholder="sk-..."
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={form.enabled}
-                onCheckedChange={(checked) =>
-                  setForm((p) => ({ ...p, enabled: checked }))
-                }
-              />
-              <span className="text-sm">启用</span>
-            </div>
-            <div className="flex justify-end gap-2 md:col-span-2">
-              <Button variant="outline" onClick={() => setFormOpen(false)}>
-                取消
-              </Button>
-              <Button onClick={saveProvider} disabled={saving}>
-                {saving ? "保存中..." : "保存"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
+      <ModalDialog
+        open={formOpen}
+        title={form.id ? "编辑提供商" : "新增提供商"}
+        onClose={() => setFormOpen(false)}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setFormOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={saveProvider} disabled={saving}>
+              {saving ? "保存中..." : "保存"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-medium">名称</p>
+          <Input
+            value={form.name}
+            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+            placeholder="OpenAI 主号"
+          />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">协议</p>
+          <Select
+            value={form.protocol}
+            onValueChange={(value: AIProtocol) => {
+              const option = PROTOCOL_OPTIONS.find((p) => p.value === value);
+              setForm((p) => ({
+                ...p,
+                protocol: value,
+                apiUrl: option?.defaultUrl || p.apiUrl,
+              }));
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PROTOCOL_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">API URL</p>
+          <Input
+            value={form.apiUrl}
+            onChange={(e) => setForm((p) => ({ ...p, apiUrl: e.target.value }))}
+          />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">
+            API Key{form.id ? "（留空表示不修改）" : ""}
+          </p>
+          <Input
+            type="password"
+            value={form.apiKey}
+            onChange={(e) => setForm((p) => ({ ...p, apiKey: e.target.value }))}
+            placeholder="sk-..."
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={form.enabled}
+            onCheckedChange={(checked) =>
+              setForm((p) => ({ ...p, enabled: checked }))
+            }
+          />
+          <span className="text-sm">启用</span>
+        </div>
+      </ModalDialog>
 
       <Card>
         <CardHeader>
@@ -562,9 +656,38 @@ export function ProvidersModelsTab({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>主模型错误转移链</CardTitle>
-          <CardDescription>主模型报错时使用此处配置的模型重试</CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>主模型错误转移链</CardTitle>
+            <CardDescription>
+              主模型报错时按顺序使用此处配置的模型重试
+            </CardDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {fallbackChain.length > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={fallbackSaving}
+                onClick={() => void saveFallback([], fallbackOn)}
+              >
+                清空
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label="添加错误转移模型"
+              title="添加错误转移模型"
+              disabled={fallbackSaving}
+              onClick={() => {
+                setFallbackCandidate("");
+                setFallbackAddOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           {fallbackChain.length === 0 ? (
@@ -651,104 +774,35 @@ export function ProvidersModelsTab({
               ))}
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value="__none__"
-              onValueChange={(value) => {
-                if (!value || value === "__none__") return;
-                if (fallbackChain.includes(value)) {
-                  toast.error("该模型已在错误转移链中");
-                  return;
-                }
-                void saveFallback([...fallbackChain, value], fallbackOn);
-              }}
-              disabled={fallbackSaving}
-            >
-              <SelectTrigger className="w-72">
-                <SelectValue placeholder="追加错误转移模型" />
-              </SelectTrigger>
-              <SelectContent>
-                {providers
-                  .flatMap((provider) =>
-                    (modelsByProvider.get(provider.id) || []).map((model) => ({
-                      ...model,
-                      providerName: provider.name,
-                    })),
-                  )
-                  .filter((model) => !fallbackChain.includes(model.id))
-                  .map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      {model.providerName} / {model.name || model.modelId}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            {fallbackChain.length > 0 ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={fallbackSaving}
-                onClick={() => void saveFallback([], fallbackOn)}
-              >
-                清空
-              </Button>
-            ) : null}
-          </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>模型列表</CardTitle>
-          <CardDescription>拉取或手动添加模型，供角色绑定使用</CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>模型列表</CardTitle>
+            <CardDescription>拉取或手动添加模型，供角色绑定使用</CardDescription>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              setAddModelForm(emptyAddModelForm());
+              setAddModelOpen(true);
+            }}
+          >
+            <Plus className="mr-1 h-4 w-4" />
+            添加模型
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 md:grid-cols-4">
-            <Select
-              value={customModel.providerId || "__none__"}
-              onValueChange={(value) =>
-                setCustomModel((p) => ({
-                  ...p,
-                  providerId: value === "__none__" ? "" : value,
-                }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="提供商" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">选择提供商</SelectItem>
-                {providers.map((provider) => (
-                  <SelectItem key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              placeholder="模型 ID"
-              value={customModel.modelId}
-              onChange={(e) =>
-                setCustomModel((p) => ({ ...p, modelId: e.target.value }))
-              }
-            />
-            <Input
-              placeholder="显示名（可选）"
-              value={customModel.name}
-              onChange={(e) =>
-                setCustomModel((p) => ({ ...p, name: e.target.value }))
-              }
-            />
-            <Button onClick={addCustomModel}>添加自定义模型</Button>
-          </div>
-
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="border-b text-muted-foreground">
                 <tr>
                   <th className="py-2 pr-3 font-medium">提供商</th>
                   <th className="py-2 pr-3 font-medium">模型</th>
                   <th className="py-2 pr-3 font-medium">能力</th>
+                  <th className="py-2 pr-3 font-medium">思考等级</th>
                   <th className="py-2 pr-3 font-medium">来源</th>
                   <th className="py-2 font-medium">操作</th>
                 </tr>
@@ -784,22 +838,44 @@ export function ProvidersModelsTab({
                         </div>
                       </td>
                       <td className="py-2 pr-3">
+                        <Select
+                          value={model.thinkingLevel || "__default__"}
+                          onValueChange={(value) => {
+                            if (value === (model.thinkingLevel || "__default__"))
+                              return;
+                            void setModelThinkingLevel(model, value);
+                          }}
+                        >
+                          <SelectTrigger className="h-8 w-28 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__default__">默认</SelectItem>
+                            {thinkingOptionsFor(provider?.protocol).map(
+                              (option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ),
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="py-2 pr-3">
                         {model.isCustom ? "自定义" : "拉取"}
                       </td>
                       <td className="py-2">
-                        {model.isCustom ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => removeCustomModel(model.id)}
-                          >
-                            删除
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            —
-                          </span>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          aria-label={`删除模型 ${model.name || model.modelId}`}
+                          onClick={() => void removeModel(model)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -808,7 +884,7 @@ export function ProvidersModelsTab({
             </table>
             {models.length === 0 ? (
               <p className="py-4 text-sm text-muted-foreground">
-                暂无模型。可对提供商点「拉模型」或手动添加。
+                暂无模型。可对提供商点「拉模型」，或点右上角「添加模型」手动添加。
               </p>
             ) : null}
           </div>
@@ -854,6 +930,200 @@ export function ProvidersModelsTab({
           </div>
         </CardContent>
       </Card>
+
+      <ModalDialog
+        open={addModelOpen}
+        title="添加自定义模型"
+        onClose={() => setAddModelOpen(false)}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setAddModelOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={submitAddModel} disabled={addModelSaving}>
+              {addModelSaving ? "添加中..." : "添加"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-medium">提供商</p>
+          <Select
+            value={addModelForm.providerId || "__none__"}
+            onValueChange={(value) =>
+              setAddModelForm((p) => ({
+                ...p,
+                providerId: value === "__none__" ? "" : value,
+              }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="选择提供商" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">选择提供商</SelectItem>
+              {providers.map((provider) => (
+                <SelectItem key={provider.id} value={provider.id}>
+                  {provider.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">模型 ID</p>
+          <Input
+            value={addModelForm.modelId}
+            onChange={(e) =>
+              setAddModelForm((p) => ({ ...p, modelId: e.target.value }))
+            }
+            placeholder="例如 gpt-4o-mini"
+          />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">显示名（可选）</p>
+          <Input
+            value={addModelForm.name}
+            onChange={(e) =>
+              setAddModelForm((p) => ({ ...p, name: e.target.value }))
+            }
+            placeholder="留空时直接使用模型 ID"
+          />
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">模型能力</p>
+          <label className="flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm">
+            <span>支持视觉（图片 / 视频理解）</span>
+            <input
+              type="checkbox"
+              className="form-checkbox"
+              checked={addModelForm.vision}
+              onChange={(e) =>
+                setAddModelForm((p) => ({ ...p, vision: e.target.checked }))
+              }
+            />
+          </label>
+          <label className="flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm">
+            <span>支持工具调用（function calling）</span>
+            <input
+              type="checkbox"
+              className="form-checkbox"
+              checked={addModelForm.toolUse}
+              onChange={(e) =>
+                setAddModelForm((p) => ({ ...p, toolUse: e.target.checked }))
+              }
+            />
+          </label>
+        </div>
+      </ModalDialog>
+
+      <ModalDialog
+        open={fallbackAddOpen}
+        title="添加错误转移模型"
+        onClose={() => setFallbackAddOpen(false)}
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setFallbackAddOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              disabled={!fallbackCandidate || fallbackSaving}
+              onClick={() => {
+                if (!fallbackCandidate) return;
+                void saveFallback([...fallbackChain, fallbackCandidate], fallbackOn);
+                setFallbackAddOpen(false);
+              }}
+            >
+              添加
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          新模型会追加到错误转移链末尾，之后可以在列表中调整顺序。
+        </p>
+        <Select
+          value={fallbackCandidate || "__none__"}
+          onValueChange={(value) =>
+            setFallbackCandidate(value === "__none__" ? "" : value)
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="选择模型" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">选择模型</SelectItem>
+            {providers
+              .flatMap((provider) =>
+                (modelsByProvider.get(provider.id) || []).map((model) => ({
+                  ...model,
+                  providerName: provider.name,
+                })),
+              )
+              .filter((model) => !fallbackChain.includes(model.id))
+              .map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.providerName} / {model.name || model.modelId}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+      </ModalDialog>
+    </div>
+  );
+}
+
+function ModalDialog({
+  open,
+  title,
+  onClose,
+  children,
+  footer,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-secondary"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="space-y-4 px-4 py-4">{children}</div>
+        <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
+          {footer}
+        </div>
+      </div>
     </div>
   );
 }

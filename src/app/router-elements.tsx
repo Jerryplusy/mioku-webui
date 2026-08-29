@@ -25,6 +25,11 @@ export const ServiceManagePage = lazy(() =>
     default: m.ServiceManagePage,
   })),
 );
+export const AdapterManagePage = lazy(() =>
+  import("@/features/management/AdapterManagePage").then((m) => ({
+    default: m.AdapterManagePage,
+  })),
+);
 export const PluginConfigPage = lazy(() =>
   import("@/features/plugin-config/PluginConfigPage").then((m) => ({
     default: m.PluginConfigPage,
@@ -33,6 +38,11 @@ export const PluginConfigPage = lazy(() =>
 export const ServiceConfigPage = lazy(() =>
   import("@/features/plugin-config/ServiceConfigPage").then((m) => ({
     default: m.ServiceConfigPage,
+  })),
+);
+export const AdapterConfigPage = lazy(() =>
+  import("@/features/plugin-config/AdapterConfigPage").then((m) => ({
+    default: m.AdapterConfigPage,
   })),
 );
 export const DataManagementPage = lazy(() =>

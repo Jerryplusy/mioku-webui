@@ -20,7 +20,7 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import type { DatasourceOption } from "@/features/plugin-config/datasource-utils";
 import { AccessControlInline } from "@/features/access-control/AccessControlInline";
 
-type BootSystemConfig = {
+type CoreSystemConfig = {
   likeCommand: {
     enabled: boolean;
     keyword: string;
@@ -44,7 +44,7 @@ type MiokuConfig = {
   owners: number[];
   admins: number[];
   napcat: NapCatConfig[];
-  boot: BootSystemConfig;
+  core: CoreSystemConfig;
 };
 
 type NapCatConfig = {
@@ -64,7 +64,7 @@ type PluginStatusItem = {
 
 type ConfigTab = "owners" | "admins" | "napcat" | "access" | "system" | "plugins";
 
-const emptyBootConfig: BootSystemConfig = {
+const emptyCoreConfig: CoreSystemConfig = {
   likeCommand: {
     enabled: true,
     keyword: "赞我",
@@ -97,32 +97,32 @@ function cloneConfig<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function normalizeBootConfig(
-  input?: Partial<BootSystemConfig> | null,
-): BootSystemConfig {
+function normalizeCoreConfig(
+  input?: Partial<CoreSystemConfig> | null,
+): CoreSystemConfig {
   const raw = input || {};
   const validFreq = ["daily", "weekly", "monthly"].includes(raw.autoUpdate?.frequency || "");
-  const merged: BootSystemConfig = {
+  const merged: CoreSystemConfig = {
     likeCommand: {
-      ...emptyBootConfig.likeCommand,
+      ...emptyCoreConfig.likeCommand,
       ...(raw.likeCommand || {}),
     },
     friend: {
-      ...emptyBootConfig.friend,
+      ...emptyCoreConfig.friend,
       ...(raw.friend || {}),
     },
     group: {
-      ...emptyBootConfig.group,
+      ...emptyCoreConfig.group,
       ...(raw.group || {}),
       minMemberCount:
         Number(raw.group?.minMemberCount) ||
-        emptyBootConfig.group.minMemberCount,
+        emptyCoreConfig.group.minMemberCount,
     },
     autoUpdate: {
-      ...emptyBootConfig.autoUpdate,
+      ...emptyCoreConfig.autoUpdate,
       ...(raw.autoUpdate || {}),
-      time: raw.autoUpdate?.time || emptyBootConfig.autoUpdate.time,
-      frequency: validFreq ? raw.autoUpdate!.frequency : emptyBootConfig.autoUpdate.frequency,
+      time: raw.autoUpdate?.time || emptyCoreConfig.autoUpdate.time,
+      frequency: validFreq ? raw.autoUpdate!.frequency : emptyCoreConfig.autoUpdate.frequency,
     },
   };
   return merged;
@@ -133,7 +133,7 @@ export function MiokuConfigPage() {
     owners: [],
     admins: [],
     napcat: [],
-    boot: cloneConfig(emptyBootConfig),
+    core: cloneConfig(emptyCoreConfig),
   });
   const [friendOptions, setFriendOptions] = useState<DatasourceOption[]>([]);
   const [groupOptions, setGroupOptions] = useState<DatasourceOption[]>([]);
@@ -168,11 +168,11 @@ export function MiokuConfigPage() {
         owners: [],
         admins: [],
         napcat: [],
-        boot: cloneConfig(emptyBootConfig),
+        core: cloneConfig(emptyCoreConfig),
       };
       const normalizedConfig = {
         ...config,
-        boot: normalizeBootConfig(config.boot),
+        core: normalizeCoreConfig(config.core),
       };
       setMiokuConfig(normalizedConfig);
       setFriendOptions(friendsRes.data || []);
@@ -285,12 +285,12 @@ export function MiokuConfigPage() {
     }
   };
 
-  const updateBootConfig = (
-    updater: (boot: BootSystemConfig) => BootSystemConfig,
+  const updateCoreConfig = (
+    updater: (core: CoreSystemConfig) => CoreSystemConfig,
   ) => {
     setMiokuConfig((prev) => ({
       ...prev,
-      boot: updater(prev.boot),
+      core: updater(prev.core),
     }));
   };
 
@@ -559,11 +559,6 @@ export function MiokuConfigPage() {
                       <div className="flex items-center gap-2">
                         <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <span className="text-sm font-medium">{plugin.name}</span>
-                        {plugin.name === "boot" && (
-                          <span className="rounded bg-secondary/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            核心
-                          </span>
-                        )}
                       </div>
                       {plugin.description && (
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -576,7 +571,6 @@ export function MiokuConfigPage() {
                       onCheckedChange={(checked) =>
                         togglePlugin(plugin.name, checked)
                       }
-                      disabled={plugin.name === "boot"}
                       className="shrink-0"
                     />
                   </div>
@@ -596,7 +590,7 @@ export function MiokuConfigPage() {
             <CardContent className="space-y-6">
               <div
                 className={`border-l-2 px-4 py-1 ${
-                  miokuConfig.boot.likeCommand.enabled
+                  miokuConfig.core.likeCommand.enabled
                     ? "border-primary"
                     : "border-border"
                 }`}
@@ -609,11 +603,11 @@ export function MiokuConfigPage() {
                     </p>
                   </div>
                   <Switch
-                    checked={miokuConfig.boot.likeCommand.enabled}
+                    checked={miokuConfig.core.likeCommand.enabled}
                     onCheckedChange={(checked) =>
-                      updateBootConfig((boot) => ({
-                        ...boot,
-                        likeCommand: { ...boot.likeCommand, enabled: checked },
+                      updateCoreConfig((core) => ({
+                        ...core,
+                        likeCommand: { ...core.likeCommand, enabled: checked },
                       }))
                     }
                     className="shrink-0"
@@ -623,15 +617,15 @@ export function MiokuConfigPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="boot-like-keyword">触发指令</Label>
+                  <Label htmlFor="core-like-keyword">触发指令</Label>
                   <Input
-                    id="boot-like-keyword"
-                    value={miokuConfig.boot.likeCommand.keyword}
+                    id="core-like-keyword"
+                    value={miokuConfig.core.likeCommand.keyword}
                     onChange={(event) =>
-                      updateBootConfig((boot) => ({
-                        ...boot,
+                      updateCoreConfig((core) => ({
+                        ...core,
                         likeCommand: {
-                          ...boot.likeCommand,
+                          ...core.likeCommand,
                           keyword: event.target.value,
                         },
                       }))
@@ -640,15 +634,15 @@ export function MiokuConfigPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="boot-like-times">点赞次数</Label>
+                  <Label htmlFor="core-like-times">点赞次数</Label>
                   <NumberInput
-                    id="boot-like-times"
-                    value={miokuConfig.boot.likeCommand.likeTimes}
+                    id="core-like-times"
+                    value={miokuConfig.core.likeCommand.likeTimes}
                     onValueChange={(value) => {
                       if (value == null) return;
-                      updateBootConfig((boot) => ({
-                        ...boot,
-                        likeCommand: { ...boot.likeCommand, likeTimes: value },
+                      updateCoreConfig((core) => ({
+                        ...core,
+                        likeCommand: { ...core.likeCommand, likeTimes: value },
                       }));
                     }}
                     placeholder="10"
@@ -656,16 +650,16 @@ export function MiokuConfigPage() {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="boot-like-emoji-id">贴表情 ID</Label>
+                  <Label htmlFor="core-like-emoji-id">贴表情 ID</Label>
                   <NumberInput
-                    id="boot-like-emoji-id"
-                    value={miokuConfig.boot.likeCommand.reactionEmojiId}
+                    id="core-like-emoji-id"
+                    value={miokuConfig.core.likeCommand.reactionEmojiId}
                     onValueChange={(value) => {
                       if (value == null) return;
-                      updateBootConfig((boot) => ({
-                        ...boot,
+                      updateCoreConfig((core) => ({
+                        ...core,
                         likeCommand: {
-                          ...boot.likeCommand,
+                          ...core.likeCommand,
                           reactionEmojiId: value,
                         },
                       }));
@@ -688,7 +682,7 @@ export function MiokuConfigPage() {
             <CardContent className="space-y-6">
               <div
                 className={`border-l-2 px-4 py-1 ${
-                  miokuConfig.boot.friend.autoApprove
+                  miokuConfig.core.friend.autoApprove
                     ? "border-primary"
                     : "border-border"
                 }`}
@@ -703,11 +697,11 @@ export function MiokuConfigPage() {
                     </p>
                   </div>
                   <Switch
-                    checked={miokuConfig.boot.friend.autoApprove}
+                    checked={miokuConfig.core.friend.autoApprove}
                     onCheckedChange={(checked) =>
-                      updateBootConfig((boot) => ({
-                        ...boot,
-                        friend: { ...boot.friend, autoApprove: checked },
+                      updateCoreConfig((core) => ({
+                        ...core,
+                        friend: { ...core.friend, autoApprove: checked },
                       }))
                     }
                     className="shrink-0"
@@ -716,15 +710,15 @@ export function MiokuConfigPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="boot-group-min-members">加群最低人数</Label>
+                <Label htmlFor="core-group-min-members">加群最低人数</Label>
                 <NumberInput
-                  id="boot-group-min-members"
-                  value={miokuConfig.boot.group.minMemberCount}
+                  id="core-group-min-members"
+                  value={miokuConfig.core.group.minMemberCount}
                   onValueChange={(value) => {
                     if (value == null) return;
-                    updateBootConfig((boot) => ({
-                      ...boot,
-                      group: { ...boot.group, minMemberCount: value },
+                    updateCoreConfig((core) => ({
+                      ...core,
+                      group: { ...core.group, minMemberCount: value },
                     }));
                   }}
                   placeholder="0"
@@ -744,7 +738,7 @@ export function MiokuConfigPage() {
             <CardContent className="space-y-6">
               <div
                 className={`border-l-2 px-4 py-1 ${
-                  miokuConfig.boot.autoUpdate.enabled
+                  miokuConfig.core.autoUpdate.enabled
                     ? "border-primary"
                     : "border-border"
                 }`}
@@ -757,11 +751,11 @@ export function MiokuConfigPage() {
                     </p>
                   </div>
                   <Switch
-                    checked={miokuConfig.boot.autoUpdate.enabled}
+                    checked={miokuConfig.core.autoUpdate.enabled}
                     onCheckedChange={(checked) =>
-                      updateBootConfig((boot) => ({
-                        ...boot,
-                        autoUpdate: { ...boot.autoUpdate, enabled: checked },
+                      updateCoreConfig((core) => ({
+                        ...core,
+                        autoUpdate: { ...core.autoUpdate, enabled: checked },
                       }))
                     }
                     className="shrink-0"
@@ -771,15 +765,15 @@ export function MiokuConfigPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="boot-autoupdate-time">更新时间</Label>
+                  <Label htmlFor="core-autoupdate-time">更新时间</Label>
                   <Input
-                    id="boot-autoupdate-time"
+                    id="core-autoupdate-time"
                     type="time"
-                    value={miokuConfig.boot.autoUpdate.time}
+                    value={miokuConfig.core.autoUpdate.time}
                     onChange={(event) =>
-                      updateBootConfig((boot) => ({
-                        ...boot,
-                        autoUpdate: { ...boot.autoUpdate, time: event.target.value },
+                      updateCoreConfig((core) => ({
+                        ...core,
+                        autoUpdate: { ...core.autoUpdate, time: event.target.value },
                       }))
                     }
                   />
@@ -788,20 +782,20 @@ export function MiokuConfigPage() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="boot-autoupdate-frequency">更新频率</Label>
+                  <Label htmlFor="core-autoupdate-frequency">更新频率</Label>
                   <Select
-                    value={miokuConfig.boot.autoUpdate.frequency}
+                    value={miokuConfig.core.autoUpdate.frequency}
                     onValueChange={(value) =>
-                      updateBootConfig((boot) => ({
-                        ...boot,
+                      updateCoreConfig((core) => ({
+                        ...core,
                         autoUpdate: {
-                          ...boot.autoUpdate,
+                          ...core.autoUpdate,
                           frequency: value as "daily" | "weekly" | "monthly",
                         },
                       }))
                     }
                   >
-                    <SelectTrigger id="boot-autoupdate-frequency">
+                    <SelectTrigger id="core-autoupdate-frequency">
                       <SelectValue placeholder="选择频率" />
                     </SelectTrigger>
                     <SelectContent>

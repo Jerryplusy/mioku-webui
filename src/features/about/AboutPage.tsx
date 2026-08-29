@@ -33,7 +33,7 @@ type OverviewResponse = {
 };
 
 const introText =
-  "Mioku 是一个以初音未来为主题，AI优先，使用napcat-sdk与mioki现代机器人核心所构建的机器人框架。在Mioku中，AI将掌控一切。像真人一样思考、水群、发表情包、网络搜索，甚至是自己使用自己的插件通通不在话下。";
+  "Mioku 是一个以初音未来为主题，AI优先，跨平台的机器人框架。在Mioku中，AI将掌控一切。像真人一样思考、水群、发表情包、网络搜索，甚至是自己使用自己的插件通通不在话下。";
 
 export function AboutPage() {
   const { setLeftContent, setCenterContent, setRightContent, setDenseHeader } =
