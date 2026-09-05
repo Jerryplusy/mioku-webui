@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChevronDown, Eye, EyeOff, Plus, Search, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import {
@@ -16,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { DatasourcePickerDialog } from "./DatasourcePickerDialog";
 import {
   resolveDatasourceOption,
@@ -106,7 +109,9 @@ function SecretInputField({
   );
 }
 
-function parseConfigKey(key: string): { configName: string; path: string } | null {
+function parseConfigKey(
+  key: string,
+): { configName: string; path: string } | null {
   const parts = key.split(".");
   if (parts.length < 2) return null;
   return {
@@ -147,8 +152,15 @@ export function ConfigPageRenderer({
   configs,
   onConfigChange,
 }: ConfigPageRendererProps) {
-  const [datasources, setDatasources] = useState<Record<string, DatasourceOption[]>>({});
-  const [activePickerField, setActivePickerField] = useState<ConfigField | null>(null);
+  const [datasources, setDatasources] = useState<
+    Record<string, DatasourceOption[]>
+  >({});
+  const [activePickerField, setActivePickerField] =
+    useState<ConfigField | null>(null);
+  const [arrayDraft, setArrayDraft] = useState<{
+    field: ConfigField;
+    item: Record<string, any>;
+  } | null>(null);
   const pageDataRef = useRef(pageData);
   const configsRef = useRef(configs);
 
@@ -184,19 +196,22 @@ export function ConfigPageRenderer({
     });
   }, [pageData.fields]);
 
-  const handleFieldChange = useCallback((field: ConfigField, value: any) => {
-    const parsed = parseConfigKey(field.key);
-    if (!parsed) return;
+  const handleFieldChange = useCallback(
+    (field: ConfigField, value: any) => {
+      const parsed = parseConfigKey(field.key);
+      if (!parsed) return;
 
-    const { configName, path } = parsed;
-    const currentConfig = configsRef.current[configName] || {};
-    const updatedConfig = setValueByPath(currentConfig, path, value);
+      const { configName, path } = parsed;
+      const currentConfig = configsRef.current[configName] || {};
+      const updatedConfig = setValueByPath(currentConfig, path, value);
 
-    onConfigChange({
-      ...configsRef.current,
-      [configName]: updatedConfig,
-    });
-  }, [onConfigChange]);
+      onConfigChange({
+        ...configsRef.current,
+        [configName]: updatedConfig,
+      });
+    },
+    [onConfigChange],
+  );
 
   const getFieldValue = useCallback((field: ConfigField): any => {
     const parsed = parseConfigKey(field.key);
@@ -211,636 +226,760 @@ export function ConfigPageRenderer({
   }, []);
 
   // Renders a sub-field within an array item
-  const renderSubField = useCallback((
-    subField: ConfigField,
-    item: Record<string, any>,
-    fieldKey: string,
-    fieldValue: any,
-    onChange: (updated: any) => void,
-  ) => {
-    const value = fieldValue;
+  const renderSubField = useCallback(
+    (
+      subField: ConfigField,
+      item: Record<string, any>,
+      fieldKey: string,
+      fieldValue: any,
+      onChange: (updated: any) => void,
+    ) => {
+      const value = fieldValue;
 
-    switch (subField.type) {
-      case "text":
-      case "secret":
-        return subField.type === "secret" ? (
-          <SecretInputField
-            field={subField}
-            value={value || ""}
-            onChange={(next) => onChange(next)}
-          />
-        ) : (
-          <Input
-            id={`sub-${subField.key}`}
-            type="text"
-            value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={subField.placeholder}
-          />
-        );
-      case "textarea":
-        return (
-          <Textarea
-            id={`sub-${subField.key}`}
-            value={normalizeEscapedNewlines(value)}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={subField.placeholder}
-            className="min-h-24 whitespace-pre-wrap"
-          />
-        );
-      case "number":
-        return (
-          <NumberInput
-            id={`sub-${subField.key}`}
-            value={typeof value === "number" ? value : null}
-            emptyBehavior="null"
-            onValueChange={(next) => onChange(next)}
-            placeholder={subField.placeholder}
-          />
-        );
-      case "switch":
-        return (
-          <div className="flex justify-end">
-            <Switch
-              className="shrink-0"
-              checked={!!value}
-              onCheckedChange={onChange}
+      switch (subField.type) {
+        case "text":
+        case "secret":
+          return subField.type === "secret" ? (
+            <SecretInputField
+              field={subField}
+              value={value || ""}
+              onChange={(next) => onChange(next)}
             />
-          </div>
-        );
-      case "select":
-        return (
-          <Select
-            value={String(value ?? "") || emptySelectValue}
-            onValueChange={(next) => onChange(next === emptySelectValue ? "" : next)}
-          >
-            <SelectTrigger id={`sub-${subField.key}`}>
-              <SelectValue placeholder={subField.placeholder || "请选择"} />
-            </SelectTrigger>
-            <SelectContent>
-              {subField.options?.map((opt: any) => (
-                <SelectItem
-                  key={opt.value || emptySelectValue}
-                  value={String(opt.value) || emptySelectValue}
-                >
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
-      default:
-        return (
-          <Input
-            id={`sub-${subField.key}`}
-            type="text"
-            value={value ?? ""}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={subField.placeholder}
-          />
-        );
-    }
-  }, []);
-
-  const renderField = useCallback((field: ConfigField) => {
-    const value = getFieldValue(field);
-    const dynamicSourceOptions =
-      field.source ? datasources[field.source] || [] : [];
-
-    switch (field.type) {
-      case "text":
-      case "secret":
-        return (
-          <div key={field.key} className="space-y-1.5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
-              <Label htmlFor={field.key} className="text-sm font-medium sm:basis-28 sm:shrink-0">
-                {field.label}
-                {field.required && <span className="text-destructive ml-1">*</span>}
-              </Label>
-              <div className="flex-1">
-                {field.type === "secret" ? (
-                  <SecretInputField
-                    field={field}
-                    value={value || ""}
-                    onChange={(nextValue) => handleFieldChange(field, nextValue)}
-                  />
-                ) : (
-                  <Input
-                    id={field.key}
-                    type="text"
-                    value={value || ""}
-                    onChange={(e) => handleFieldChange(field, e.target.value)}
-                    placeholder={field.placeholder}
-                  />
-                )}
-              </div>
-            </div>
-            {field.description && (
-              <p className="text-sm text-muted-foreground">{field.description}</p>
-            )}
-          </div>
-        );
-
-      case "textarea":
-        return (
-          <div key={field.key} className={fieldCardClass}>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor={field.key} className="text-sm font-medium">
-                {field.label}
-                {field.required && <span className="text-destructive ml-1">*</span>}
-              </Label>
-            </div>
+          ) : (
+            <Input
+              id={`sub-${subField.key}`}
+              type="text"
+              value={value || ""}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={subField.placeholder}
+            />
+          );
+        case "textarea":
+          return (
             <Textarea
-              id={field.key}
+              id={`sub-${subField.key}`}
               value={normalizeEscapedNewlines(value)}
-              onChange={(e) => handleFieldChange(field, e.target.value)}
-              placeholder={field.placeholder}
-              className="min-h-40 whitespace-pre-wrap"
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={subField.placeholder}
+              className="min-h-24 whitespace-pre-wrap"
             />
-            {field.description && (
-              <p className="text-sm leading-6 text-muted-foreground">{field.description}</p>
-            )}
-          </div>
-        );
-
-      case "number":
-        return (
-          <div key={field.key} className="space-y-1.5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
-              <Label htmlFor={field.key} className="text-sm font-medium sm:basis-28 sm:shrink-0">
-                {field.label}
-                {field.required && <span className="text-destructive ml-1">*</span>}
-              </Label>
-              <div className="flex-1">
-                <NumberInput
-                  id={field.key}
-                  value={typeof value === "number" ? value : null}
-                  emptyBehavior="null"
-                  onValueChange={(nextValue) => handleFieldChange(field, nextValue)}
-                  placeholder={field.placeholder}
-                />
-              </div>
-            </div>
-            {field.description && (
-              <p className="text-sm text-muted-foreground">{field.description}</p>
-            )}
-          </div>
-        );
-
-      case "switch":
-        return (
-          <section
-            key={field.key}
-            className={cn(
-              "border-l-2 px-4 py-1",
-              value ? "border-primary" : "border-border",
-            )}
-          >
-            <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4">
-              <div>
-                <span className="text-sm font-semibold">{field.label}</span>
-                {field.description && (
-                  <p className="mt-1 text-xs text-muted-foreground">{field.description}</p>
-                )}
-              </div>
+          );
+        case "number":
+          return (
+            <NumberInput
+              id={`sub-${subField.key}`}
+              value={typeof value === "number" ? value : null}
+              emptyBehavior="null"
+              onValueChange={(next) => onChange(next)}
+              placeholder={subField.placeholder}
+            />
+          );
+        case "switch":
+          return (
+            <div className="flex justify-end">
               <Switch
                 className="shrink-0"
                 checked={!!value}
-                onCheckedChange={(checked) => handleFieldChange(field, checked)}
+                onCheckedChange={onChange}
               />
-            </label>
-          </section>
-        );
+            </div>
+          );
+        case "select":
+          return (
+            <Select
+              value={String(value ?? "") || emptySelectValue}
+              onValueChange={(next) =>
+                onChange(next === emptySelectValue ? "" : next)
+              }
+            >
+              <SelectTrigger id={`sub-${subField.key}`}>
+                <SelectValue placeholder={subField.placeholder || "请选择"} />
+              </SelectTrigger>
+              <SelectContent>
+                {subField.options?.map((opt: any) => (
+                  <SelectItem
+                    key={opt.value || emptySelectValue}
+                    value={String(opt.value) || emptySelectValue}
+                  >
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+        default:
+          return (
+            <Input
+              id={`sub-${subField.key}`}
+              type="text"
+              value={value ?? ""}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={subField.placeholder}
+            />
+          );
+      }
+    },
+    [],
+  );
 
-      case "select":
-        if (field.source) {
-          const selectedOption = value
-            ? resolveDatasourceOption(String(value), dynamicSourceOptions, field.source)
-            : null;
+  const renderField = useCallback(
+    (field: ConfigField) => {
+      const value = getFieldValue(field);
+      const dynamicSourceOptions = field.source
+        ? datasources[field.source] || []
+        : [];
+
+      switch (field.type) {
+        case "text":
+        case "secret":
+          return (
+            <div key={field.key} className="space-y-1.5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                <Label
+                  htmlFor={field.key}
+                  className="text-sm font-medium sm:basis-28 sm:shrink-0"
+                >
+                  {field.label}
+                  {field.required && (
+                    <span className="text-destructive ml-1">*</span>
+                  )}
+                </Label>
+                <div className="flex-1">
+                  {field.type === "secret" ? (
+                    <SecretInputField
+                      field={field}
+                      value={value || ""}
+                      onChange={(nextValue) =>
+                        handleFieldChange(field, nextValue)
+                      }
+                    />
+                  ) : (
+                    <Input
+                      id={field.key}
+                      type="text"
+                      value={value || ""}
+                      onChange={(e) => handleFieldChange(field, e.target.value)}
+                      placeholder={field.placeholder}
+                    />
+                  )}
+                </div>
+              </div>
+              {field.description && (
+                <p className="text-sm text-muted-foreground">
+                  {field.description}
+                </p>
+              )}
+            </div>
+          );
+
+        case "textarea":
+          return (
+            <div key={field.key} className={fieldCardClass}>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor={field.key} className="text-sm font-medium">
+                  {field.label}
+                  {field.required && (
+                    <span className="text-destructive ml-1">*</span>
+                  )}
+                </Label>
+              </div>
+              <Textarea
+                id={field.key}
+                value={normalizeEscapedNewlines(value)}
+                onChange={(e) => handleFieldChange(field, e.target.value)}
+                placeholder={field.placeholder}
+                className="min-h-40 whitespace-pre-wrap"
+              />
+              {field.description && (
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {field.description}
+                </p>
+              )}
+            </div>
+          );
+
+        case "number":
+          return (
+            <div key={field.key} className="space-y-1.5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                <Label
+                  htmlFor={field.key}
+                  className="text-sm font-medium sm:basis-28 sm:shrink-0"
+                >
+                  {field.label}
+                  {field.required && (
+                    <span className="text-destructive ml-1">*</span>
+                  )}
+                </Label>
+                <div className="flex-1">
+                  <NumberInput
+                    id={field.key}
+                    value={typeof value === "number" ? value : null}
+                    emptyBehavior="null"
+                    onValueChange={(nextValue) =>
+                      handleFieldChange(field, nextValue)
+                    }
+                    placeholder={field.placeholder}
+                  />
+                </div>
+              </div>
+              {field.description && (
+                <p className="text-sm text-muted-foreground">
+                  {field.description}
+                </p>
+              )}
+            </div>
+          );
+
+        case "switch":
+          return (
+            <section
+              key={field.key}
+              className={cn(
+                "border-l-2 px-4 py-1",
+                value ? "border-primary" : "border-border",
+              )}
+            >
+              <label className="flex min-h-16 cursor-pointer items-center justify-between gap-4">
+                <div>
+                  <span className="text-sm font-semibold">{field.label}</span>
+                  {field.description && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {field.description}
+                    </p>
+                  )}
+                </div>
+                <Switch
+                  className="shrink-0"
+                  checked={!!value}
+                  onCheckedChange={(checked) =>
+                    handleFieldChange(field, checked)
+                  }
+                />
+              </label>
+            </section>
+          );
+
+        case "select":
+          if (field.source) {
+            const selectedOption = value
+              ? resolveDatasourceOption(
+                  String(value),
+                  dynamicSourceOptions,
+                  field.source,
+                )
+              : null;
+
+            return (
+              <div key={field.key} className="space-y-1.5 max-w-md">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                  <Label
+                    htmlFor={field.key}
+                    className="text-sm font-medium sm:basis-28 sm:shrink-0"
+                  >
+                    {field.label}
+                    {field.required && (
+                      <span className="text-destructive ml-1">*</span>
+                    )}
+                  </Label>
+                  <div className="flex-1">
+                    <button
+                      id={field.key}
+                      type="button"
+                      className="flex min-h-10 w-full items-center justify-between rounded-md border border-input bg-card px-3 py-2 text-left text-sm transition hover:border-primary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      onClick={() => setActivePickerField(field)}
+                    >
+                      <span
+                        className={cn(
+                          "truncate",
+                          !selectedOption && "text-muted-foreground",
+                        )}
+                      >
+                        {selectedOption
+                          ? `${selectedOption.label} (${selectedOption.meta?.qq || selectedOption.meta?.groupId || selectedOption.value})`
+                          : field.placeholder || "点击选择"}
+                      </span>
+                      <Search className="ml-3 h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+                  </div>
+                </div>
+                {selectedOption ? (
+                  <div className="flex items-center gap-3 border-l-2 border-border px-4 py-1">
+                    <div className="h-10 w-10 overflow-hidden rounded-full bg-secondary/40">
+                      {selectedOption.meta?.avatarUrl ? (
+                        <img
+                          src={selectedOption.meta.avatarUrl}
+                          alt={selectedOption.label}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {selectedOption.label}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedOption.meta?.qq
+                          ? `QQ ${selectedOption.meta.qq}`
+                          : `群号 ${selectedOption.meta?.groupId || selectedOption.value}`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-full p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                      onClick={() => handleFieldChange(field, "")}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : null}
+                {field.description && (
+                  <p className="text-sm text-muted-foreground ">
+                    {field.description}
+                  </p>
+                )}
+              </div>
+            );
+          }
+
+          const options = field.options || [];
+          const hasEmptyOption = options.some(
+            (opt: any) => String(opt.value) === "",
+          );
+          const selectValue = value == null ? "" : String(value);
 
           return (
             <div key={field.key} className="space-y-1.5 max-w-md">
               <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
-                <Label htmlFor={field.key} className="text-sm font-medium sm:basis-28 sm:shrink-0">
+                <Label
+                  htmlFor={field.key}
+                  className="text-sm font-medium sm:basis-28 sm:shrink-0"
+                >
                   {field.label}
-                  {field.required && <span className="text-destructive ml-1">*</span>}
+                  {field.required && (
+                    <span className="text-destructive ml-1">*</span>
+                  )}
                 </Label>
                 <div className="flex-1">
-                  <button
-                    id={field.key}
-                    type="button"
-                    className="flex min-h-10 w-full items-center justify-between rounded-md border border-input bg-card px-3 py-2 text-left text-sm transition hover:border-primary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    onClick={() => setActivePickerField(field)}
+                  <Select
+                    value={selectValue || emptySelectValue}
+                    onValueChange={(nextValue) =>
+                      handleFieldChange(
+                        field,
+                        nextValue === emptySelectValue ? "" : nextValue,
+                      )
+                    }
                   >
-                    <span className={cn("truncate", !selectedOption && "text-muted-foreground")}>
-                      {selectedOption
-                        ? `${selectedOption.label} (${selectedOption.meta?.qq || selectedOption.meta?.groupId || selectedOption.value})`
-                        : field.placeholder || "点击选择"}
-                    </span>
-                    <Search className="ml-3 h-4 w-4 shrink-0 text-muted-foreground" />
-                  </button>
+                    <SelectTrigger id={field.key} className="w-full">
+                      <SelectValue
+                        placeholder={field.placeholder || "请选择"}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!field.required && !hasEmptyOption ? (
+                        <SelectItem value={emptySelectValue}>
+                          {field.placeholder || "请选择"}
+                        </SelectItem>
+                      ) : null}
+                      {options.map((opt: any) => (
+                        <SelectItem
+                          key={opt.value || emptySelectValue}
+                          value={String(opt.value) || emptySelectValue}
+                        >
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-              {selectedOption ? (
-                <div className="flex items-center gap-3 border-l-2 border-border px-4 py-1">
-                  <div className="h-10 w-10 overflow-hidden rounded-full bg-secondary/40">
-                    {selectedOption.meta?.avatarUrl ? (
-                      <img
-                        src={selectedOption.meta.avatarUrl}
-                        alt={selectedOption.label}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : null}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{selectedOption.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedOption.meta?.qq
-                        ? `QQ ${selectedOption.meta.qq}`
-                        : `群号 ${selectedOption.meta?.groupId || selectedOption.value}`}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-full p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-                    onClick={() => handleFieldChange(field, "")}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : null}
               {field.description && (
-                <p className="text-sm text-muted-foreground ">{field.description}</p>
+                <p className="text-sm text-muted-foreground">
+                  {field.description}
+                </p>
               )}
             </div>
           );
-        }
 
-        const options = field.options || [];
-        const hasEmptyOption = options.some(
-          (opt: any) => String(opt.value) === "",
-        );
-        const selectValue = value == null ? "" : String(value);
+        case "multi-select":
+          const selectedValues = Array.isArray(value) ? value : [];
+          if (field.source) {
+            const selectedOptions = selectedValues
+              .map((item: string) =>
+                resolveDatasourceOption(
+                  String(item),
+                  dynamicSourceOptions,
+                  field.source,
+                ),
+              )
+              .filter(Boolean) as DatasourceOption[];
 
-        return (
-          <div key={field.key} className="space-y-1.5 max-w-md">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
-              <Label htmlFor={field.key} className="text-sm font-medium sm:basis-28 sm:shrink-0">
-                {field.label}
-                {field.required && <span className="text-destructive ml-1">*</span>}
-              </Label>
-              <div className="flex-1">
-                <Select
-                  value={selectValue || emptySelectValue}
-                  onValueChange={(nextValue) =>
-                    handleFieldChange(
-                      field,
-                      nextValue === emptySelectValue ? "" : nextValue,
-                    )
-                  }
+            return (
+              <div key={field.key} className="space-y-3 max-w-2xl">
+                <Label className="block text-sm font-medium">
+                  {field.label}
+                  {field.required && (
+                    <span className="text-destructive ml-1">*</span>
+                  )}
+                </Label>
+                <button
+                  type="button"
+                  className="flex min-h-10 w-full items-center justify-between rounded-md border border-input bg-card px-3 py-2 text-left text-sm transition hover:border-primary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  onClick={() => setActivePickerField(field)}
                 >
-                  <SelectTrigger id={field.key} className="w-full">
-                    <SelectValue placeholder={field.placeholder || "请选择"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {!field.required && !hasEmptyOption ? (
-                      <SelectItem value={emptySelectValue}>
-                        {field.placeholder || "请选择"}
-                      </SelectItem>
-                    ) : null}
-                    {options.map((opt: any) => (
-                      <SelectItem
-                        key={opt.value || emptySelectValue}
-                        value={String(opt.value) || emptySelectValue}
+                  <span
+                    className={cn(
+                      selectedOptions.length === 0 && "text-muted-foreground",
+                    )}
+                  >
+                    {selectedOptions.length > 0
+                      ? `已选择 ${selectedOptions.length} 项`
+                      : field.placeholder || "点击选择"}
+                  </span>
+                  <div className="ml-3 flex shrink-0 items-center gap-2 text-muted-foreground">
+                    <Search className="h-4 w-4" />
+                    <ChevronDown className="h-4 w-4" />
+                  </div>
+                </button>
+                {selectedOptions.length > 0 ? (
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {selectedOptions.map((option) => (
+                      <div
+                        key={option.value}
+                        className="flex items-center gap-3 border-l-2 border-border px-4 py-1"
                       >
-                        {opt.label}
-                      </SelectItem>
+                        <div className="h-10 w-10 overflow-hidden rounded-full bg-secondary/40">
+                          {option.meta?.avatarUrl ? (
+                            <img
+                              src={option.meta.avatarUrl}
+                              alt={option.label}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : null}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">
+                            {option.label}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {option.meta?.qq
+                              ? `QQ ${option.meta.qq}`
+                              : `群号 ${option.meta?.groupId || option.value}${option.meta?.memberCount ? ` · ${option.meta.memberCount} 人` : ""}`}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded-full p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                          onClick={() =>
+                            handleFieldChange(
+                              field,
+                              selectedValues.filter(
+                                (item: string) => String(item) !== option.value,
+                              ),
+                            )
+                          }
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                ) : null}
+                {field.description && (
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {field.description}
+                  </p>
+                )}
               </div>
-            </div>
-            {field.description && (
-              <p className="text-sm text-muted-foreground">{field.description}</p>
-            )}
-          </div>
-        );
-
-      case "multi-select":
-        const selectedValues = Array.isArray(value) ? value : [];
-        if (field.source) {
-          const selectedOptions = selectedValues
-            .map((item: string) =>
-              resolveDatasourceOption(String(item), dynamicSourceOptions, field.source),
-            )
-            .filter(Boolean) as DatasourceOption[];
+            );
+          }
+          const multiOptions = field.options || [];
 
           return (
-            <div key={field.key} className="space-y-3 max-w-2xl">
-              <Label className="block text-sm font-medium">
+            <div key={field.key} className="space-y-2">
+              <Label className="text-sm font-medium">
                 {field.label}
-                {field.required && <span className="text-destructive ml-1">*</span>}
+                {field.required && (
+                  <span className="text-destructive ml-1">*</span>
+                )}
               </Label>
-              <button
-                type="button"
-                className="flex min-h-10 w-full items-center justify-between rounded-md border border-input bg-card px-3 py-2 text-left text-sm transition hover:border-primary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                onClick={() => setActivePickerField(field)}
-              >
-                <span className={cn(selectedOptions.length === 0 && "text-muted-foreground")}>
-                  {selectedOptions.length > 0
-                    ? `已选择 ${selectedOptions.length} 项`
-                    : field.placeholder || "点击选择"}
-                </span>
-                <div className="ml-3 flex shrink-0 items-center gap-2 text-muted-foreground">
-                  <Search className="h-4 w-4" />
-                  <ChevronDown className="h-4 w-4" />
-                </div>
-              </button>
-              {selectedOptions.length > 0 ? (
-                <div className="grid gap-2 md:grid-cols-2">
-                  {selectedOptions.map((option) => (
+              <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border bg-card/70 p-3">
+                {multiOptions.map((opt: any) => (
+                  <label
+                    key={opt.value}
+                    className="flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2 transition-colors hover:border-primary/20 hover:bg-secondary/60"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedValues.includes(opt.value)}
+                      onChange={(e) => {
+                        const newValues = e.target.checked
+                          ? [...selectedValues, opt.value]
+                          : selectedValues.filter((v: any) => v !== opt.value);
+                        handleFieldChange(field, newValues);
+                      }}
+                      className="form-checkbox"
+                    />
+                    <span className="text-sm text-card-foreground/95">
+                      {opt.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {field.description && (
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {field.description}
+                </p>
+              )}
+            </div>
+          );
+
+        case "json":
+          return (
+            <div key={field.key} className="space-y-3">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor={field.key} className="text-sm font-medium">
+                  {field.label}
+                  {field.required && (
+                    <span className="text-destructive ml-1">*</span>
+                  )}
+                </Label>
+              </div>
+              <Textarea
+                id={field.key}
+                value={JSON.stringify(value, null, 2)}
+                onChange={(e) => {
+                  try {
+                    const parsed = JSON.parse(e.target.value);
+                    handleFieldChange(field, parsed);
+                  } catch {
+                    // ignore invalid JSON while typing
+                  }
+                }}
+                placeholder={field.placeholder}
+                className="min-h-40 font-mono text-xs whitespace-pre-wrap"
+              />
+              {field.description && (
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {field.description}
+                </p>
+              )}
+            </div>
+          );
+
+        case "array": {
+          const items = Array.isArray(value) ? value : [];
+          const buildDefaultItem = () => {
+            const item: Record<string, any> = {};
+            for (const subField of field.itemFields ?? []) {
+              if (subField.defaultValue === undefined) continue;
+              const fieldKey = subField.key.split(".").pop()!;
+              item[fieldKey] = subField.defaultValue;
+            }
+            return item;
+          };
+          return (
+            <div key={field.key} className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">
+                  {field.label}
+                  {field.required && (
+                    <span className="text-destructive ml-1">*</span>
+                  )}
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setArrayDraft({ field, item: buildDefaultItem() });
+                  }}
+                  className="flex items-center gap-1 rounded-md border border-input bg-card px-3 py-1.5 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  添加
+                </button>
+              </div>
+              {items.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">
+                  暂无数据，点击上方添加
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {items.map((item: any, index: number) => (
                     <div
-                      key={option.value}
-                      className="flex items-center gap-3 border-l-2 border-border px-4 py-1"
+                      key={index}
+                      className="space-y-3 border-l-2 border-border px-4 py-1"
                     >
-                      <div className="h-10 w-10 overflow-hidden rounded-full bg-secondary/40">
-                        {option.meta?.avatarUrl ? (
-                          <img
-                            src={option.meta.avatarUrl}
-                            alt={option.label}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : null}
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          #{index + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newItems = items.filter(
+                              (_: any, i: number) => i !== index,
+                            );
+                            handleFieldChange(field, newItems);
+                          }}
+                          className="rounded-full p-1 text-muted-foreground transition hover:bg-secondary hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{option.label}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {option.meta?.qq
-                            ? `QQ ${option.meta.qq}`
-                            : `群号 ${option.meta?.groupId || option.value}${option.meta?.memberCount ? ` · ${option.meta.memberCount} 人` : ""}`}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="rounded-full p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-                        onClick={() =>
-                          handleFieldChange(
-                            field,
-                            selectedValues.filter(
-                              (item: string) => String(item) !== option.value,
-                            ),
-                          )
-                        }
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                      {field.itemFields?.map((subField) => {
+                        const fieldKey = subField.key.split(".").pop()!;
+                        const fieldValue = item?.[fieldKey];
+                        return (
+                          <div key={subField.key} className="space-y-1.5">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                              <Label
+                                htmlFor={`${field.key}.${index}.${subField.key}`}
+                                className="text-xs font-medium sm:basis-28 sm:shrink-0"
+                              >
+                                {subField.label}
+                              </Label>
+                              <div className="flex-1">
+                                {renderSubField(
+                                  subField,
+                                  item,
+                                  fieldKey,
+                                  fieldValue,
+                                  (updated: any) => {
+                                    const newItems = [...items];
+                                    newItems[index] = {
+                                      ...newItems[index],
+                                      [fieldKey]: updated,
+                                    };
+                                    handleFieldChange(field, newItems);
+                                  },
+                                )}
+                              </div>
+                            </div>
+                            {subField.description && (
+                              <p className="text-xs text-muted-foreground ">
+                                {subField.description}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
                 </div>
-              ) : null}
+              )}
               {field.description && (
-                <p className="text-sm leading-6 text-muted-foreground">{field.description}</p>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {field.description}
+                </p>
               )}
             </div>
           );
         }
-        const multiOptions = field.options || [];
 
-        return (
-          <div key={field.key} className="space-y-2">
-            <Label className="text-sm font-medium">
-              {field.label}
-              {field.required && <span className="text-destructive ml-1">*</span>}
-            </Label>
-            <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border bg-card/70 p-3">
-              {multiOptions.map((opt: any) => (
-                <label
-                  key={opt.value}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2 transition-colors hover:border-primary/20 hover:bg-secondary/60"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedValues.includes(opt.value)}
-                    onChange={(e) => {
-                      const newValues = e.target.checked
-                        ? [...selectedValues, opt.value]
-                        : selectedValues.filter((v: any) => v !== opt.value);
-                      handleFieldChange(field, newValues);
-                    }}
-                    className="form-checkbox"
-                  />
-                  <span className="text-sm text-card-foreground/95">{opt.label}</span>
-                </label>
-              ))}
-            </div>
-            {field.description && (
-              <p className="text-sm leading-6 text-muted-foreground">{field.description}</p>
-            )}
-          </div>
-        );
-
-      case "json":
-        return (
-          <div key={field.key} className="space-y-3">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor={field.key} className="text-sm font-medium">
-                {field.label}
-                {field.required && <span className="text-destructive ml-1">*</span>}
-              </Label>
-            </div>
-            <Textarea
-              id={field.key}
-              value={JSON.stringify(value, null, 2)}
-              onChange={(e) => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  handleFieldChange(field, parsed);
-                } catch {
-                  // ignore invalid JSON while typing
-                }
-              }}
-              placeholder={field.placeholder}
-              className="min-h-40 font-mono text-xs whitespace-pre-wrap"
-            />
-            {field.description && (
-              <p className="text-sm leading-6 text-muted-foreground">{field.description}</p>
-            )}
-          </div>
-        );
-
-      case "array": {
-        const items = Array.isArray(value) ? value : [];
-        return (
-          <div key={field.key} className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">
-                {field.label}
-                {field.required && <span className="text-destructive ml-1">*</span>}
-              </Label>
-              <button
-                type="button"
-                onClick={() => {
-                  const newItems = [...items, {}];
-                  handleFieldChange(field, newItems);
-                }}
-                className="flex items-center gap-1 rounded-md border border-input bg-card px-3 py-1.5 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                添加
-              </button>
-            </div>
-            {items.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">暂无数据，点击上方添加</p>
-            ) : (
-              <div className="space-y-3">
-                {items.map((item: any, index: number) => (
-                  <div
-                    key={index}
-                    className="space-y-3 border-l-2 border-border px-4 py-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-muted-foreground">#{index + 1}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newItems = items.filter((_: any, i: number) => i !== index);
-                          handleFieldChange(field, newItems);
-                        }}
-                        className="rounded-full p-1 text-muted-foreground transition hover:bg-secondary hover:text-destructive"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    {field.itemFields?.map((subField) => {
-                      const fieldKey = subField.key.split(".").pop()!;
-                      const fieldValue = item?.[fieldKey];
-                      return (
-                        <div key={subField.key} className="space-y-1.5">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
-                            <Label htmlFor={`${field.key}.${index}.${subField.key}`} className="text-xs font-medium sm:basis-28 sm:shrink-0">
-                              {subField.label}
-                            </Label>
-                            <div className="flex-1">
-                              {renderSubField(subField, item, fieldKey, fieldValue, (updated: any) => {
-                                const newItems = [...items];
-                                newItems[index] = { ...newItems[index], [fieldKey]: updated };
-                                handleFieldChange(field, newItems);
-                              })}
-                            </div>
-                          </div>
-                          {subField.description && (
-                            <p className="text-xs text-muted-foreground ">{subField.description}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            )}
-            {field.description && (
-              <p className="text-sm leading-6 text-muted-foreground">{field.description}</p>
-            )}
-          </div>
-        );
+        default:
+          return null;
       }
-
-      default:
-        return null;
-    }
-  }, [datasources, getFieldValue, handleFieldChange, renderSubField]);
+    },
+    [datasources, getFieldValue, handleFieldChange, renderSubField],
+  );
 
   // Keep markdown renderers stable so inputs are not remounted on each keystroke.
-  const components = useMemo(() => ({
-    code({ node, inline, className, children, ...props }: any) {
-      const match = /language-mioku-field/.test(className || "");
-      const matchFields = /language-mioku-fields/.test(className || "");
-      const matchFile = /language-mioku-file/.test(className || "");
+  const components = useMemo(
+    () => ({
+      code({ node, inline, className, children, ...props }: any) {
+        const match = /language-mioku-field/.test(className || "");
+        const matchFields = /language-mioku-fields/.test(className || "");
+        const matchFile = /language-mioku-file/.test(className || "");
 
-      if (!inline && (match || matchFields || matchFile)) {
-        const content = String(children).replace(/\n$/, "");
+        if (!inline && (match || matchFields || matchFile)) {
+          const content = String(children).replace(/\n$/, "");
 
-        if (match) {
-          // Parse single field block
-          const keyMatch = content.match(/key:\s*(\S+)/);
-          if (keyMatch) {
-            const field = pageDataRef.current.fields.find(
-              (f) => f.key === keyMatch[1],
-            );
-            if (field) {
+          if (match) {
+            // Parse single field block
+            const keyMatch = content.match(/key:\s*(\S+)/);
+            if (keyMatch) {
+              const field = pageDataRef.current.fields.find(
+                (f) => f.key === keyMatch[1],
+              );
+              if (field) {
+                return (
+                  <div className="my-4" data-mioku-block="field">
+                    {renderField(field)}
+                  </div>
+                );
+              }
+            }
+          }
+
+          if (matchFields) {
+            // Parse multiple fields block
+            const keysMatch = content.match(/keys:\s*\n((?:\s*-\s*\S+\n?)+)/);
+            if (keysMatch) {
+              const keys = keysMatch[1]
+                .split("\n")
+                .map((line) => line.trim().replace(/^-\s*/, ""))
+                .filter(Boolean);
+
+              const fields = keys
+                .map((key) =>
+                  pageDataRef.current.fields.find((f) => f.key === key),
+                )
+                .filter(Boolean) as ConfigField[];
+
               return (
-                <div className="my-4" data-mioku-block="field">
-                  {renderField(field)}
+                <div className="my-4 space-y-4" data-mioku-block="fields">
+                  {fields.map((field) => renderField(field))}
                 </div>
               );
             }
           }
-        }
 
-        if (matchFields) {
-          // Parse multiple fields block
-          const keysMatch = content.match(/keys:\s*\n((?:\s*-\s*\S+\n?)+)/);
-          if (keysMatch) {
-            const keys = keysMatch[1]
-              .split("\n")
-              .map((line) => line.trim().replace(/^-\s*/, ""))
-              .filter(Boolean);
+          if (matchFile) {
+            const configMatch = content.match(/config:\s*(\S+)/);
+            if (configMatch) {
+              const configName = configMatch[1];
+              const configValue = configsRef.current[configName] || {};
 
-            const fields = keys
-              .map((key) =>
-                pageDataRef.current.fields.find((f) => f.key === key),
-              )
-              .filter(Boolean) as ConfigField[];
-
-            return (
-              <div className="my-4 space-y-4" data-mioku-block="fields">
-                {fields.map((field) => renderField(field))}
-              </div>
-            );
-          }
-        }
-
-        if (matchFile) {
-          const configMatch = content.match(/config:\s*(\S+)/);
-          if (configMatch) {
-            const configName = configMatch[1];
-            const configValue = configsRef.current[configName] || {};
-
-            return (
-              <div className="my-4 space-y-3" data-mioku-block="file">
-                <div className="flex flex-col pt-2">
-                  <Label>{configName}.json (原始配置)</Label>
+              return (
+                <div className="my-4 space-y-3" data-mioku-block="file">
+                  <div className="flex flex-col pt-2">
+                    <Label>{configName}.json (原始配置)</Label>
+                  </div>
+                  <Textarea
+                    value={JSON.stringify(configValue, null, 2)}
+                    onChange={(e) => {
+                      try {
+                        const parsed = JSON.parse(e.target.value);
+                        onConfigChange({
+                          ...configsRef.current,
+                          [configName]: parsed,
+                        });
+                      } catch {
+                        // ignore invalid JSON
+                      }
+                    }}
+                    className="min-h-48 font-mono text-xs whitespace-pre-wrap"
+                  />
                 </div>
-                <Textarea
-                  value={JSON.stringify(configValue, null, 2)}
-                  onChange={(e) => {
-                    try {
-                      const parsed = JSON.parse(e.target.value);
-                      onConfigChange({
-                        ...configsRef.current,
-                        [configName]: parsed,
-                      });
-                    } catch {
-                      // ignore invalid JSON
-                    }
-                  }}
-                  className="min-h-48 font-mono text-xs whitespace-pre-wrap"
-                />
-              </div>
-            );
+              );
+            }
           }
-        }
 
-        return null;
-      }
+          return null;
+        }
 
         const isBlock = Boolean(className);
         if (isBlock) {
-          return <code className="font-mono text-xs leading-6">{children}</code>;
+          return (
+            <code className="font-mono text-xs leading-6">{children}</code>
+          );
         }
 
         return (
-          <code className="rounded bg-secondary/60 px-1 py-0.5 font-mono text-[0.82em]" {...props}>
+          <code
+            className="rounded bg-secondary/60 px-1 py-0.5 font-mono text-[0.82em]"
+            {...props}
+          >
             {children}
           </code>
         );
@@ -850,10 +989,18 @@ export function ConfigPageRenderer({
         if (child?.props?.["data-mioku-block"]) {
           return child;
         }
-        return <pre className="overflow-auto rounded-xl border bg-secondary/20 p-3">{children}</pre>;
+        return (
+          <pre className="overflow-auto rounded-xl border bg-secondary/20 p-3">
+            {children}
+          </pre>
+        );
       },
       h1({ children }: any) {
-        return <h1 className="text-base font-semibold leading-6 tracking-tight">{children}</h1>;
+        return (
+          <h1 className="text-base font-semibold leading-6 tracking-tight">
+            {children}
+          </h1>
+        );
       },
       h2({ children }: any) {
         return (
@@ -866,18 +1013,32 @@ export function ConfigPageRenderer({
         return <h3 className="text-sm font-semibold leading-6">{children}</h3>;
       },
       p({ children }: any) {
-        return <p className="text-sm leading-6 text-card-foreground/95">{children}</p>;
+        return (
+          <p className="text-sm leading-6 text-card-foreground/95">
+            {children}
+          </p>
+        );
       },
       ul({ children }: any) {
-        return <ul className="list-inside list-disc space-y-1 text-sm leading-6">{children}</ul>;
+        return (
+          <ul className="list-inside list-disc space-y-1 text-sm leading-6">
+            {children}
+          </ul>
+        );
       },
       ol({ children }: any) {
-        return <ol className="list-inside list-decimal space-y-1 text-sm leading-6">{children}</ol>;
+        return (
+          <ol className="list-inside list-decimal space-y-1 text-sm leading-6">
+            {children}
+          </ol>
+        );
       },
       hr() {
         return <hr className="border-border/80" />;
       },
-    }), [getFieldValue, handleFieldChange, onConfigChange, renderField]);
+    }),
+    [getFieldValue, handleFieldChange, onConfigChange, renderField],
+  );
 
   return (
     <div className="space-y-4">
@@ -900,11 +1061,104 @@ export function ConfigPageRenderer({
           }}
         />
       ) : null}
-      {pageData.markdown?.trim() ? (
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={components}
+
+      {arrayDraft ? (
+        <Dialog
+          open
+          title={`添加${arrayDraft.field.label}`}
+          description={arrayDraft.field.description}
+          onClose={() => setArrayDraft(null)}
+          className="max-w-lg"
+          footer={
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setArrayDraft(null)}
+                disabled={false}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={() => {
+                  const field = arrayDraft.field;
+                  const draft = arrayDraft.item;
+                  const missing = (field.itemFields ?? []).find((sub) => {
+                    if (!sub.required) return false;
+                    const subKey = sub.key.split(".").pop()!;
+                    const val = draft[subKey];
+                    return (
+                      val === undefined ||
+                      val === null ||
+                      (typeof val === "string" && val.trim() === "")
+                    );
+                  });
+                  if (missing) {
+                    toast.warning(`请填写「${missing.label}」`);
+                    return;
+                  }
+                  const currentItems = Array.isArray(getFieldValue(field))
+                    ? getFieldValue(field)
+                    : [];
+                  handleFieldChange(field, [...currentItems, draft]);
+                  setArrayDraft(null);
+                }}
+              >
+                添加
+              </Button>
+            </>
+          }
         >
+          <div className="max-h-[55vh] space-y-3 overflow-y-auto px-1 [scrollbar-gutter:stable]">
+            {(arrayDraft.field.itemFields ?? []).map((subField) => {
+              const fieldKey = subField.key.split(".").pop()!;
+              const fieldValue = arrayDraft.item[fieldKey];
+              return (
+                <div key={subField.key} className="space-y-1.5">
+                  <div className="flex flex-col gap-1">
+                    <Label
+                      htmlFor={`draft-${subField.key}`}
+                      className="text-sm font-medium"
+                    >
+                      {subField.label}
+                      {subField.required && (
+                        <span className="text-destructive ml-1">*</span>
+                      )}
+                    </Label>
+                  </div>
+                  <div className="flex-1">
+                    {renderSubField(
+                      subField,
+                      arrayDraft.item,
+                      fieldKey,
+                      fieldValue,
+                      (updated: any) => {
+                        setArrayDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                item: {
+                                  ...current.item,
+                                  [fieldKey]: updated,
+                                },
+                              }
+                            : current,
+                        );
+                      },
+                    )}
+                  </div>
+                  {subField.description ? (
+                    <p className="text-xs text-muted-foreground">
+                      {subField.description}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </Dialog>
+      ) : null}
+      {pageData.markdown?.trim() ? (
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
           {stripLeadingHeading(pageData.markdown, pageData.title)}
         </ReactMarkdown>
       ) : null}

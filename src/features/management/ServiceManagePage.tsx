@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ExternalLink,
   LoaderCircle,
+  Plus,
   RefreshCw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/ui/markdown";
 import { confirm } from "@/components/ui/confirm";
@@ -21,7 +23,7 @@ import { useTopbar } from "@/components/layout/TopbarContext";
 import { apiFetch } from "@/lib/api";
 import { toast } from "@/lib/toast";
 
-type ViewMode = "overview" | "detail" | "install";
+type ViewMode = "overview" | "detail";
 type UpdateState = "up-to-date" | "has-updates" | "unknown" | "no-git";
 
 interface ServiceOverviewItem {
@@ -131,6 +133,7 @@ export function ServiceManagePage() {
   const [repoUrlInput, setRepoUrlInput] = useState("");
   const [repoEditInput, setRepoEditInput] = useState("");
   const [installOutput, setInstallOutput] = useState("");
+  const [installOpen, setInstallOpen] = useState(false);
   const [missingServices, setMissingServices] = useState<string[]>([]);
 
   const [loadingOverview, setLoadingOverview] = useState(false);
@@ -276,8 +279,8 @@ export function ServiceManagePage() {
         >
           <button
             type="button"
-            onClick={() => setMode("install")}
-            className={chipClass(mode === "install")}
+            onClick={() => setInstallOpen(true)}
+            className={chipClass(false)}
           >
             安装
           </button>
@@ -308,7 +311,12 @@ export function ServiceManagePage() {
       </div>
     );
     setLeftContent(chips);
-    setRightContent(null);
+    setRightContent(
+      <Button variant="outline" size="sm" onClick={() => setInstallOpen(true)}>
+        <Plus className="h-4 w-4 sm:mr-1" />
+        <span className="hidden sm:inline">添加服务</span>
+      </Button>,
+    );
     return () => {
       setLeftContent(null);
       setRightContent(null);
@@ -452,6 +460,13 @@ export function ServiceManagePage() {
     } finally {
       setInstalling(false);
     }
+  };
+
+  const closeInstall = () => {
+    setInstallOpen(false);
+    setRepoUrlInput("");
+    setInstallOutput("");
+    setInstalling(false);
   };
 
   const changeRepo = async () => {
@@ -632,47 +647,6 @@ export function ServiceManagePage() {
         </Card>
       ) : null}
 
-      {mode === "install" ? (
-        <Card className="animate-soft-pop">
-          <CardHeader>
-            <CardTitle>安装服务</CardTitle>
-            <CardDescription>
-              输入服务 Git 仓库地址，服务端会 clone 并安装依赖。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              placeholder="https://github.com/owner/repo.git"
-              value={repoUrlInput}
-              onChange={(event) => setRepoUrlInput(event.target.value)}
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={installService} disabled={installing}>
-                {installing ? (
-                  <>
-                    <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
-                    安装中
-                  </>
-                ) : (
-                  "安装"
-                )}
-              </Button>
-            </div>
-            {installing ? (
-              <div className="flex items-center gap-2 border-l-2 border-primary px-4 py-2 text-sm">
-                <LoaderCircle className="h-4 w-4 animate-spin text-primary" />
-                正在 clone 仓库并安装依赖，请稍候...
-              </div>
-            ) : null}
-            {installOutput ? (
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border bg-secondary/20 p-3 text-xs">
-                {installOutput}
-              </pre>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
       {mode === "detail" ? (
         <div className="space-y-4 animate-soft-pop">
           {loadingDetail ? (
@@ -839,6 +813,53 @@ export function ServiceManagePage() {
           </div>
         </div>
       ) : null}
+
+      <Dialog
+        open={installOpen}
+        title="安装服务"
+        description="输入服务 Git 仓库地址，服务端会 clone 并安装依赖"
+        onClose={closeInstall}
+        footer={
+          <>
+            <Button variant="outline" onClick={closeInstall} disabled={installing}>
+              取消
+            </Button>
+            <Button onClick={installService} disabled={installing}>
+              {installing ? (
+                <>
+                  <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
+                  安装中
+                </>
+              ) : (
+                "安装"
+              )}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Input
+            placeholder="https://github.com/owner/repo.git"
+            value={repoUrlInput}
+            onChange={(event) => setRepoUrlInput(event.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") installService().then();
+            }}
+            autoFocus
+          />
+          {installing ? (
+            <div className="flex items-center gap-2 border-l-2 border-primary px-4 py-2 text-sm">
+              <LoaderCircle className="h-4 w-4 animate-spin text-primary" />
+              正在 clone 仓库并安装依赖，请稍候...
+            </div>
+          ) : null}
+          {installOutput ? (
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border bg-secondary/20 p-3 text-xs">
+              {installOutput}
+            </pre>
+          ) : null}
+        </div>
+      </Dialog>
     </div>
   );
 }

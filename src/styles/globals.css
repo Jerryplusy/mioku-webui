@@ -190,6 +190,18 @@
     background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.7));
   }
 
+  .dialog-panel * {
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .dialog-panel *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border) / 0.8);
+  }
+
+  .dialog-panel *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.65);
+  }
+
   .topbar-scroll {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--primary)) transparent;

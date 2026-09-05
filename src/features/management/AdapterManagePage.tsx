@@ -3,7 +3,7 @@ import {
   ExternalLink,
   LoaderCircle,
   Package,
-  RefreshCw,
+  Plus,
   Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -15,13 +15,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/input";
 import { confirm } from "@/components/ui/confirm";
 import { useTopbar } from "@/components/layout/TopbarContext";
 import { apiFetch } from "@/lib/api";
 import { toast } from "@/lib/toast";
 
-type ViewMode = "overview" | "detail" | "install";
+type ViewMode = "overview" | "detail";
 
 interface AdapterOverviewItem {
   name: string;
@@ -63,6 +64,7 @@ export function AdapterManagePage() {
   const [selectedName, setSelectedName] = useState("");
   const [detail, setDetail] = useState<AdapterDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [installOpen, setInstallOpen] = useState(false);
   const [installInput, setInstallInput] = useState("");
   const [installing, setInstalling] = useState(false);
   const [installOutput, setInstallOutput] = useState("");
@@ -132,8 +134,8 @@ export function AdapterManagePage() {
         </span>
         <span key={`install-${navAnimSeed}`} className="topbar-nav-item-enter">
           <button
-            onClick={() => setMode("install")}
-            className={chipClass(mode === "install")}
+            onClick={() => setInstallOpen(true)}
+            className={chipClass(false)}
           >
             安装适配器
           </button>
@@ -141,9 +143,13 @@ export function AdapterManagePage() {
       </div>,
     );
     setRightContent(
-      <Button variant="outline" size="sm" onClick={() => loadOverview().then()}>
-        <RefreshCw className="h-4 w-4 sm:mr-1" />
-        <span className="hidden sm:inline">刷新</span>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setInstallOpen(true)}
+      >
+        <Plus className="h-4 w-4 sm:mr-1" />
+        <span className="hidden sm:inline">添加适配器</span>
       </Button>,
     );
     return () => {
@@ -202,6 +208,13 @@ export function AdapterManagePage() {
     }
   };
 
+  const closeInstall = () => {
+    setInstallOpen(false);
+    setInstallInput("");
+    setInstallOutput("");
+    setInstalling(false);
+  };
+
   return (
     <div className="space-y-4 animate-soft-pop">
       {mode === "overview" && (
@@ -217,7 +230,7 @@ export function AdapterManagePage() {
               <p className="text-sm text-muted-foreground py-4">加载中...</p>
             ) : adapters.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">
-                暂无已安装适配器，点击上方「安装适配器」从 npm 安装
+                暂无已安装适配器，点击右上角「添加适配器」从 npm 安装
               </p>
             ) : (
               <div className="space-y-1">
@@ -281,38 +294,6 @@ export function AdapterManagePage() {
         </Card>
       )}
 
-      {mode === "install" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>安装适配器</CardTitle>
-            <CardDescription>
-              输入 npm 包名（如 mioku-adapter-onebotv11），或到插件市场浏览适配器
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                value={installInput}
-                onChange={(e) => setInstallInput(e.target.value)}
-                placeholder="mioku-adapter-xxx"
-              />
-              <Button onClick={installAdapter} disabled={installing}>
-                {installing ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : (
-                  "安装"
-                )}
-              </Button>
-            </div>
-            {installOutput ? (
-              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs">
-                {installOutput}
-              </pre>
-            ) : null}
-          </CardContent>
-        </Card>
-      )}
-
       {mode === "detail" && (
         <Card>
           <CardHeader>
@@ -361,6 +342,44 @@ export function AdapterManagePage() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={installOpen}
+        title="安装适配器"
+        description="输入 npm 包名（如 mioku-adapter-onebotv11），或到插件市场浏览适配器"
+        onClose={closeInstall}
+        footer={
+          <>
+            <Button variant="outline" onClick={closeInstall} disabled={installing}>
+              取消
+            </Button>
+            <Button onClick={installAdapter} disabled={installing}>
+              {installing ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                "安装"
+              )}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Input
+            value={installInput}
+            onChange={(e) => setInstallInput(e.target.value)}
+            placeholder="mioku-adapter-xxx"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") installAdapter().then();
+            }}
+            autoFocus
+          />
+          {installOutput ? (
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs">
+              {installOutput}
+            </pre>
+          ) : null}
+        </div>
+      </Dialog>
     </div>
   );
 }

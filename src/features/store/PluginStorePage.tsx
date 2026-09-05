@@ -4,6 +4,7 @@ import {
   ExternalLink,
   LoaderCircle,
   Package,
+  Plus,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/ui/markdown";
 import { useTopbar } from "@/components/layout/TopbarContext";
@@ -23,7 +25,7 @@ import { apiFetch } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { confirm } from "@/components/ui/confirm";
 
-type StoreViewMode = "list" | "detail" | "url-install";
+type StoreViewMode = "list" | "detail";
 type StoreType = "plugin" | "service" | "adapter" | "all";
 
 const PAGE_SIZE = 12;
@@ -213,6 +215,7 @@ export function PluginStorePage() {
   const [detail, setDetail] = useState<StorePackageDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  const [urlInstallOpen, setUrlInstallOpen] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [urlTarget, setUrlTarget] = useState<"plugin" | "service" | "adapter">("plugin");
   const [installing, setInstalling] = useState(false);
@@ -670,8 +673,8 @@ export function PluginStorePage() {
         >
           <button
             type="button"
-            onClick={() => setMode("url-install")}
-            className={chipClass(mode === "url-install")}
+            onClick={() => setUrlInstallOpen(true)}
+            className={chipClass(false)}
           >
             从 URL 安装
           </button>
@@ -681,17 +684,23 @@ export function PluginStorePage() {
 
     setLeftContent(chips);
     setRightContent(
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => loadStore().then()}
-        disabled={loadingList}
-      >
-        <RefreshCw
-          className={`mr-1.5 h-4 w-4 ${loadingList ? "animate-spin" : ""}`}
-        />
-        刷新
-      </Button>,
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => loadStore().then()}
+          disabled={loadingList}
+        >
+          <RefreshCw
+            className={`mr-1.5 h-4 w-4 ${loadingList ? "animate-spin" : ""}`}
+          />
+          刷新
+        </Button>
+        <Button size="sm" onClick={() => setUrlInstallOpen(true)}>
+          <Plus className="h-4 w-4 sm:mr-1" />
+          <span className="hidden sm:inline">添加</span>
+        </Button>
+      </div>,
     );
 
     return () => {
@@ -1047,73 +1056,91 @@ export function PluginStorePage() {
         </div>
       )}
 
-      {mode === "url-install" && (
-        <Card className="animate-soft-pop">
-          <CardHeader>
-            <CardTitle>从 URL 安装</CardTitle>
-            <CardDescription>
-              输入任意 Git 仓库地址，选择类型后安装
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              placeholder="https://github.com/owner/repo.git"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex rounded-lg border bg-secondary/30 p-1">
-                <button
-                  type="button"
-                  onClick={() => setUrlTarget("plugin")}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                    urlTarget === "plugin"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  插件
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUrlTarget("service")}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                    urlTarget === "service"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  服务
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUrlTarget("adapter")}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                    urlTarget === "adapter"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  适配器
-                </button>
-              </div>
-              <Button onClick={installFromUrl} disabled={installing}>
-                {installing ? (
-                  <>
-                    <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" />
-                    安装中
-                  </>
-                ) : (
-                  <>
-                    <Download className="mr-1.5 h-4 w-4" />
-                    安装
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <Dialog
+        open={urlInstallOpen}
+        title="从 URL 安装"
+        description="输入任意 Git 仓库地址，选择类型后安装"
+        onClose={() => {
+          setUrlInstallOpen(false);
+          setUrlInput("");
+          setInstalling(false);
+        }}
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setUrlInstallOpen(false);
+                setUrlInput("");
+                setInstalling(false);
+              }}
+              disabled={installing}
+            >
+              取消
+            </Button>
+            <Button onClick={installFromUrl} disabled={installing}>
+              {installing ? (
+                <>
+                  <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" />
+                  安装中
+                </>
+              ) : (
+                <>
+                  <Download className="mr-1.5 h-4 w-4" />
+                  安装
+                </>
+              )}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Input
+            placeholder="https://github.com/owner/repo.git"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") installFromUrl().then();
+            }}
+            autoFocus
+          />
+          <div className="flex rounded-lg border bg-secondary/30 p-1">
+            <button
+              type="button"
+              onClick={() => setUrlTarget("plugin")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                urlTarget === "plugin"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              插件
+            </button>
+            <button
+              type="button"
+              onClick={() => setUrlTarget("service")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                urlTarget === "service"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              服务
+            </button>
+            <button
+              type="button"
+              onClick={() => setUrlTarget("adapter")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                urlTarget === "adapter"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              适配器
+            </button>
+          </div>
+        </div>
+      </Dialog>
 
       {servicePickerOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-fade-in">
